@@ -7,16 +7,18 @@ LLM (FR-142) — the system produces complete, demo-quality prose with no API
 key configured.
 
 Replay reconstructs a timeline from persisted events ONLY. It never recomputes
-(INV-6).
+(INV-6), and it reads through the audit repository rather than touching the
+database itself.
 """
 
 from __future__ import annotations
 
 from .explanation import build_explanation
 from .narrator import build_narrated_explanation, render_narrative
-from .replay import reconstruct_timeline
+from .replay import TimelineRow, reconstruct_timeline
 
 __all__ = [
+    "TimelineRow",
     "build_explanation",
     "build_narrated_explanation",
     "reconstruct_timeline",

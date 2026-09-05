@@ -20,6 +20,15 @@ from pathlib import Path
 import pytest
 
 from cce.audit.database import get_connection, run_migrations, transaction
+from cce.audit.events import (
+    EVENT_BREAKER_TRIPPED,
+    EVENT_CONTROL_REJECTED,
+    EVENT_HUMAN_ACTION,
+    EVENT_RISK_COMPUTED,
+    EVENT_SHOCK_DETECTED,
+    EVENT_TRIGGER_RECEIVED,
+    make_event,
+)
 from cce.audit.repository import (
     AuditRepository,
     AuditWriteError,
@@ -29,7 +38,10 @@ from cce.audit.repository import (
 )
 from cce.audit.serialization import policy_from_json, policy_to_json
 from cce.contracts import (
+    Actor,
+    Alert,
     Breach,
+    BreakerCategory,
     Candidate,
     CandidateRole,
     Comparator,
@@ -51,6 +63,7 @@ from cce.contracts import (
 )
 from cce.decisions.explanation import build_explanation
 from cce.decisions.narrator import build_narrated_explanation, render_narrative
+from cce.decisions.replay import reconstruct_timeline
 
 WEIGHTS = {"NIFTY50": 0.30, "GSEC": 0.40, "GOLD": 0.20, "CASH": 0.10}
 
@@ -722,3 +735,376 @@ def test_explanation_requires_trigger_and_action(field):
     kwargs[field] = "   "
     with pytest.raises(ValueError, match=field):
         build_explanation(**kwargs)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# control findings and stress results
+# ---------------------------------------------------------------------------
+
+def test_record_control_findings_keeps_observed_and_threshold(repo, conn):
+    """FR-174: a finding shows 43.0% > 35.0%, not "constraints violated"."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    written = repo.record_control_findings(decision_id, [a_breach()], candidate_id)
+    assert written == 1
+
+    row = conn.execute(
+        "SELECT * FROM control_findings WHERE candidate_id = ?", (candidate_id,)
+    ).fetchone()
+    assert row["control_code"] == "CONC_SECTOR_MAX"
+    assert row["observed_value"] == pytest.approx(0.43)
+    assert row["threshold_value"] == pytest.approx(0.35)
+    assert row["comparator"] == "GT"
+    assert row["is_hard"] == 1
+    assert row["severity"] == "RED"
+
+
+def test_record_stress_results_keeps_the_full_status(repo, conn):
+    """INV-10: NOT_RUN and ERROR are never equivalent to PASSED."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+
+    errored = StressResult(
+        scenario_code="BROAD_CRASH",
+        scenario_label="Broad crash",
+        is_custom=False,
+        shocks={"BROAD_EQUITY": -0.25},
+        portfolio_loss=0.0,
+        loss_paise=0,
+        contribution={},
+        post_shock_volatility=None,
+        post_shock_cvar=None,
+        breaches=(),
+        loss_threshold=0.18,
+        status=StressStatus.ERROR,
+    )
+    repo.record_stress_results(
+        decision_id, [a_stress_result(passed=False), errored], candidate_id
+    )
+
+    rows = conn.execute(
+        "SELECT scenario_code, passed, status FROM stress_results "
+        "WHERE candidate_id = ? ORDER BY stress_result_id",
+        (candidate_id,),
+    ).fetchall()
+    assert [(r["scenario_code"], r["passed"], r["status"]) for r in rows] == [
+        ("BANKING_CRISIS", 0, "FAILED"),
+        ("BROAD_CRASH", 0, "ERROR"),
+    ]
+
+
+def test_an_errored_stress_run_is_never_stored_as_passed(repo, conn):
+    """The passed bit is derived from status, not supplied separately."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    for status in (StressStatus.NOT_RUN, StressStatus.ERROR, StressStatus.FAILED):
+        result = StressResult(
+            scenario_code=f"S_{status.value}",
+            scenario_label=status.value,
+            is_custom=False,
+            shocks={},
+            portfolio_loss=0.0,
+            loss_paise=0,
+            contribution={},
+            post_shock_volatility=None,
+            post_shock_cvar=None,
+            breaches=(),
+            loss_threshold=0.18,
+            status=status,
+        )
+        repo.record_stress_results(decision_id, [result], candidate_id)
+
+    passed_flags = [
+        r["passed"]
+        for r in conn.execute(
+            "SELECT passed FROM stress_results WHERE candidate_id = ? "
+            "AND scenario_code LIKE 'S_%'",
+            (candidate_id,),
+        ).fetchall()
+    ]
+    assert passed_flags == [0, 0, 0]
+
+
+def test_empty_findings_and_results_write_nothing(repo):
+    decision_id = a_decision(repo)
+    assert repo.record_control_findings(decision_id, []) == 0
+    assert repo.record_stress_results(decision_id, []) == 0
+
+
+# ---------------------------------------------------------------------------
+# decision events and replay (INV-6)
+# ---------------------------------------------------------------------------
+
+def test_record_event_and_replay_in_sequence_order(repo):
+    """Replay orders by sequence_no, never by wall clock."""
+    decision_id = a_decision(repo)
+    # deliberately written out of order, with the LATER event timestamped first
+    repo.record_event(decision_id, make_event(
+        2, EVENT_CONTROL_REJECTED, "Rejected on sector concentration",
+        occurred_at=datetime(2026, 8, 31, 9, 41, tzinfo=UTC),
+    ))
+    repo.record_event(decision_id, make_event(
+        1, EVENT_SHOCK_DETECTED, "Banking shock detected",
+        occurred_at=datetime(2026, 8, 31, 9, 41, tzinfo=UTC),
+    ))
+
+    timeline = repo.get_replay_timeline(decision_id)
+    assert [e.sequence_no for e in timeline] == [1, 2]
+    assert timeline[0].event_code == EVENT_SHOCK_DETECTED
+    assert timeline[0].actor is Actor.MACHINE
+    assert timeline[1].actor is Actor.CONTROL
+
+
+def test_duplicate_sequence_number_is_refused(repo):
+    """The schema enforces one event per sequence_no per decision."""
+    decision_id = a_decision(repo)
+    repo.record_event(decision_id, make_event(1, EVENT_SHOCK_DETECTED, "first"))
+    with pytest.raises(AuditWriteError, match="sequence"):
+        repo.record_event(decision_id, make_event(1, EVENT_RISK_COMPUTED, "second"))
+
+
+def test_event_detail_round_trips(repo):
+    decision_id = a_decision(repo)
+    repo.record_event(decision_id, make_event(
+        1, EVENT_RISK_COMPUTED, "Risk recomputed",
+        detail={"ewma_volatility": 0.1643, "sector": "BANKING"},
+    ))
+    timeline = repo.get_replay_timeline(decision_id)
+    assert timeline[0].detail == {"ewma_volatility": 0.1643, "sector": "BANKING"}
+
+
+def test_make_event_derives_the_actor_from_the_event_code():
+    """A control judgement filed as a machine step misrepresents who decided."""
+    assert make_event(1, EVENT_SHOCK_DETECTED, "s").actor is Actor.MACHINE
+    assert make_event(1, EVENT_BREAKER_TRIPPED, "s").actor is Actor.CONTROL
+    assert make_event(1, EVENT_HUMAN_ACTION, "s").actor is Actor.HUMAN
+
+
+def test_make_event_refuses_to_guess_an_actor():
+    with pytest.raises(ValueError, match="unknown event_code"):
+        make_event(1, "NOT_A_REAL_CODE", "s")
+
+
+def test_replay_reconstructs_from_persistence_only(repo):
+    """INV-6: the timeline is read, never recomputed."""
+    decision_id = a_decision(repo)
+    repo.record_event(decision_id, make_event(1, EVENT_TRIGGER_RECEIVED, "Trigger"))
+    repo.record_event(decision_id, make_event(2, EVENT_RISK_COMPUTED, "Risk"))
+    repo.record_event(decision_id, make_event(3, EVENT_CONTROL_REJECTED, "Rejected"))
+    repo.record_event(decision_id, make_event(4, EVENT_HUMAN_ACTION, "Kept current"))
+
+    rows = reconstruct_timeline(repo, decision_id)
+    assert [r.sequence_no for r in rows] == [1, 2, 3, 4]
+    assert [r.actor_label for r in rows] == [
+        "System", "System", "Control engine", "Risk manager"
+    ]
+    assert rows[2].summary == "Rejected"
+    assert rows[0].timestamp_text
+
+
+def test_replay_of_a_decision_with_no_events_is_empty(repo):
+    """An empty timeline is reported as empty, not filled in (Rule 2)."""
+    decision_id = a_decision(repo)
+    assert reconstruct_timeline(repo, decision_id) == ()
+
+
+# ---------------------------------------------------------------------------
+# alerts
+# ---------------------------------------------------------------------------
+
+def test_raise_alert(repo, conn):
+    decision_id = a_decision(repo)
+    alert_id = repo.raise_alert(
+        Alert(
+            severity="RED",
+            category=BreakerCategory.RISK,
+            title="Circuit breaker active",
+            message="Sector risk contribution at 58% exceeds the 45% hard limit",
+            created_at=datetime(2026, 8, 31, 9, 42, tzinfo=UTC),
+        ),
+        decision_id=decision_id,
+    )
+    row = conn.execute(
+        "SELECT * FROM alerts WHERE alert_id = ?", (alert_id,)
+    ).fetchone()
+    assert row["severity"] == "RED"
+    assert row["category"] == "RISK"
+    assert row["decision_id"] == decision_id
+    assert row["acknowledged_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# safe-allocation promotion (INV-2, INV-4, INV-10)
+# ---------------------------------------------------------------------------
+
+def _approve(repo, decision_id, override=False):
+    action = HumanActionRecord(
+        action=HumanAction.OVERRIDE if override else HumanAction.APPROVE,
+        user_identity="demo_risk_manager",
+        user_role="RISK_MANAGER",
+        timestamp=datetime(2026, 8, 31, 10, 0, tzinfo=UTC),
+        is_override=override,
+        override_reason="Board-approved exception" if override else None,
+        overridden_controls=("CONC_SECTOR_MAX",) if override else (),
+        confirmation_token="CONFIRM-1" if override else None,
+    )
+    repo.close_decision_with_human_action(decision_id, action, portfolio_state_after=1)
+
+
+def test_promote_safe_allocation_records_the_new_last_approved(repo):
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=True))
+    _approve(repo, decision_id)
+
+    repo.promote_safe_allocation(decision_id, candidate_id, portfolio_state_id=1)
+
+    safe = repo.get_last_safe_allocation("DEMO_100CR")
+    assert safe is not None
+    assert safe.decision_id == decision_id
+    assert safe.approved_by == "demo_risk_manager"
+    assert safe.via_override is False
+    assert safe.weights == pytest.approx(WEIGHTS)
+
+
+def test_an_ineligible_candidate_cannot_be_promoted(repo):
+    """INV-2: an invalid allocation cannot become an approved allocation."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    _approve(repo, decision_id)
+
+    with pytest.raises(AuditWriteError, match="not eligible for approval"):
+        repo.promote_safe_allocation(decision_id, candidate_id, portfolio_state_id=1)
+
+
+def test_the_last_safe_allocation_is_unchanged_by_a_refused_promotion(repo):
+    """INV-4: on failure, retain the last approved allocation."""
+    before = repo.get_last_safe_allocation("DEMO_100CR")
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    _approve(repo, decision_id)
+    with pytest.raises(AuditWriteError):
+        repo.promote_safe_allocation(decision_id, candidate_id, portfolio_state_id=1)
+
+    after = repo.get_last_safe_allocation("DEMO_100CR")
+    assert after == before
+
+
+def test_an_ineligible_candidate_can_be_promoted_via_a_recorded_override(repo):
+    """FR-118: an override is permitted, and is recorded as an override."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    _approve(repo, decision_id, override=True)
+
+    repo.promote_safe_allocation(decision_id, candidate_id, portfolio_state_id=1)
+    safe = repo.get_last_safe_allocation("DEMO_100CR")
+    assert safe is not None
+    assert safe.via_override is True
+
+
+def test_promotion_requires_a_recorded_human_action(repo):
+    """INV-6: nothing is promoted without a human on the record."""
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=True))
+    with pytest.raises(AuditWriteError, match="no recorded human action"):
+        repo.promote_safe_allocation(decision_id, candidate_id, portfolio_state_id=1)
+
+
+def test_promotion_rejects_a_candidate_from_another_decision(repo):
+    first = a_decision(repo, uid="uid-a")
+    second = a_decision(repo, uid="uid-b")
+    candidate_id = repo.record_candidate(first, a_candidate(passed=True))
+    _approve(repo, second)
+    with pytest.raises(AuditWriteError, match="belongs to decision"):
+        repo.promote_safe_allocation(second, candidate_id, portfolio_state_id=1)
+
+
+# ---------------------------------------------------------------------------
+# reads
+# ---------------------------------------------------------------------------
+
+def test_get_decision_assembles_everything_that_was_stored(repo):
+    decision_id = a_decision(repo)
+    candidate_id = repo.record_candidate(decision_id, a_candidate(passed=False))
+    repo.record_control_findings(decision_id, [a_breach()], candidate_id)
+    repo.record_stress_results(decision_id, [a_stress_result(passed=False)], candidate_id)
+    repo.record_event(decision_id, make_event(1, EVENT_SHOCK_DETECTED, "Shock"))
+    expl = build_explanation(
+        trigger="Banking shock", risk_change=None, main_contributors=(),
+        optimizer=Strategy.MAX_SHARPE, candidate_summary=dict(WEIGHTS),
+        control_status=ControlStatus.FAILED, reasons=("sector limit",),
+        stress_summary=("banking crisis failed",), action="Rejected.",
+    )
+    repo.record_explanation(decision_id, expl, render_narrative(expl))
+    _approve(repo, decision_id, override=True)
+
+    stored = repo.get_decision(decision_id)
+    assert stored.event_uid == "uid-1"
+    assert stored.control_status == "FAILED"
+    assert stored.circuit_breaker_active is True
+    assert stored.is_closed
+
+    assert len(stored.candidates) == 1
+    cand = stored.candidates[0]
+    assert cand.role == "SAFE_CONSTRAINED"
+    assert cand.eligible_for_approval is False
+    assert cand.weights == pytest.approx(WEIGHTS)
+    assert len(cand.findings) == 1
+    assert cand.findings[0].control_code == "CONC_SECTOR_MAX"
+    assert cand.findings[0].observed == pytest.approx(0.43)
+    assert len(cand.stress) == 1
+    assert cand.stress[0].status is StressStatus.FAILED
+
+    assert [e.event_code for e in stored.events] == [EVENT_SHOCK_DETECTED]
+    assert stored.human_action is not None
+    assert stored.human_action.is_override is True
+    assert stored.human_action.overridden_controls == ("CONC_SECTOR_MAX",)
+    assert stored.template_text and "Banking shock" in stored.template_text
+    assert stored.structured_explanation is not None
+
+
+def test_get_decision_raises_for_an_unknown_id(repo):
+    with pytest.raises(LookupError, match="no decision"):
+        repo.get_decision(9999)
+
+
+def test_list_decisions_is_newest_first(repo):
+    a_decision(repo, uid="uid-a")
+    a_decision(repo, uid="uid-b")
+    rows = repo.list_decisions(limit=10)
+    # the seeded decision plus the two above
+    assert len(rows) == 3
+    assert rows[0].created_at >= rows[-1].created_at
+    assert all(isinstance(r.created_at, datetime) for r in rows)
+
+
+def test_list_decisions_paginates(repo):
+    a_decision(repo, uid="uid-a")
+    a_decision(repo, uid="uid-b")
+    first = repo.list_decisions(limit=1, offset=0)
+    second = repo.list_decisions(limit=1, offset=1)
+    assert len(first) == len(second) == 1
+    assert first[0].decision_id != second[0].decision_id
+
+
+def test_get_current_policy_returns_the_configured_policy(repo, policy):
+    assert repo.get_current_policy() == policy
+
+
+def test_get_policy_version_returns_the_policy_in_force(repo, policy):
+    """INV-8: replay reads the version the decision recorded, not the newest."""
+    assert repo.get_policy_version(1) == policy
+
+
+def test_get_current_policy_follows_the_newest_version(repo, policy):
+    from dataclasses import replace
+
+    amended = replace(policy, version=2, label="amended")
+    repo.record_policy_version(
+        amended,
+        PolicyChangeMeta(
+            created_by="demo_risk_manager", created_by_role="RISK_MANAGER",
+            source="UI_EDIT", parent_version_id=1, change_summary="relabelled",
+        ),
+    )
+    assert repo.get_current_policy() == amended
+    assert repo.get_policy_version(1) == policy

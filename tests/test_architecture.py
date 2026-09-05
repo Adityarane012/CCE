@@ -39,6 +39,7 @@ FORBIDDEN: dict[str, list[str]] = {
     ],
     "cce/data": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
     "cce/audit": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
+    "cce/decisions": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
 }
 
 
@@ -172,3 +173,64 @@ def test_no_unsafe_constructs() -> None:
         if banned.search(line) and not line.lstrip().startswith("#")
     ]
     assert not offenders, "unsafe construct (NFR-031): " + ", ".join(offenders)
+
+
+def test_only_the_audit_package_touches_the_database() -> None:
+    """docs/02-ARCHITECTURE.md section 2: cce/audit/ is the ONLY DB access.
+
+    This guard exists because it was breached: cce/decisions/replay.py was
+    written with its own cursor and its own SELECT. Nothing caught it, because
+    the layer rules were expressed as import checks and raw SQL is not an
+    import.
+
+    A second module holding a connection is how an append-only guarantee
+    quietly stops being one — the repository can refuse an UPDATE, but it
+    cannot refuse one issued behind its back.
+    """
+    # Per-line: a connection or a cursor being obtained at all.
+    handle = re.compile(r"\bimport\s+sqlite3\b|\bsqlite3\.connect\b|\.cursor\(\)")
+    # Whole-file: execute(...) opening onto a SQL keyword, triple-quoted or not.
+    # Matched across newlines because the SQL in this codebase is written as a
+    # block starting on the line after the call.
+    statement = re.compile(
+        r"\bexecute(?:many|script)?\s*\(\s*[\"']{1,3}\s*"
+        r"(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|BEGIN|COMMIT)\b",
+        re.IGNORECASE,
+    )
+
+    offenders: list[str] = []
+    for pkg in ("cce", "ui"):
+        for f in _py_files(pkg):
+            rel = f.relative_to(ROOT).as_posix()
+            if rel.startswith("cce/audit/"):
+                continue
+            text = f.read_text(encoding="utf-8")
+            offenders.extend(
+                f"{rel}:{i}"
+                for i, line in enumerate(text.splitlines(), 1)
+                if handle.search(line)
+            )
+            if statement.search(text):
+                offenders.append(f"{rel} (raw SQL statement)")
+    assert not offenders, (
+        "database access outside cce/audit/ (docs/02-ARCHITECTURE.md section 2): "
+        + ", ".join(offenders)
+    )
+
+
+def test_every_package_is_a_real_package() -> None:
+    """Every cce subpackage has an __init__.py.
+
+    Namespace packages work until something needs the package docstring, an
+    explicit export list, or a tool that walks __init__ files - and then they
+    fail in a way that looks like a missing module rather than a missing file.
+    """
+    missing = [
+        d.relative_to(ROOT).as_posix()
+        for d in sorted((ROOT / "cce").iterdir())
+        if d.is_dir()
+        and d.name != "__pycache__"
+        and any(p.suffix == ".py" for p in d.iterdir())
+        and not (d / "__init__.py").exists()
+    ]
+    assert not missing, "package without __init__.py: " + ", ".join(missing)

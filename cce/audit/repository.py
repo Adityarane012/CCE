@@ -16,15 +16,17 @@ trail, because it is trusted.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
-from dataclasses import dataclass
+from collections.abc import Sequence
 from datetime import datetime
 
 from cce.contracts import (
+    Alert,
+    Breach,
     Candidate,
     ControlStatus,
+    DecisionEvent,
     Explanation,
     HumanActionRecord,
     Policy,
@@ -33,10 +35,19 @@ from cce.contracts import (
     RiskChange,
     RiskSnapshot,
     SafeAllocation,
+    StressResult,
     StressStatus,
 )
 
+from . import queries
 from .database import transaction
+from .models import (
+    DecisionContext,
+    DecisionSummary,
+    MarketSnapshotMeta,
+    PolicyChangeMeta,
+    StoredDecision,
+)
 from .serialization import breaches_to_json, dumps, policy_to_json, positions_to_json
 
 logger = logging.getLogger(__name__)
@@ -59,19 +70,6 @@ def _now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _parse_dt(raw: str) -> datetime:
-    """Parse a persisted timestamp.
-
-    Stored timestamps are ISO-8601, but SQLite's own ``datetime('now')``
-    produces a space-separated form with no zone, so both are accepted.
-    """
-    text = raw.strip().replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return datetime.fromisoformat(text.replace(" ", "T"))
-
-
 def _risk_change_dict(rc: RiskChange | None) -> dict | None:
     """Serialise a RiskChange, including its derived delta."""
     if rc is None:
@@ -83,74 +81,6 @@ def _risk_change_dict(rc: RiskChange | None) -> dict | None:
         "delta": rc.delta,
         "scope": rc.scope,
     }
-
-
-@dataclass(frozen=True)
-class PolicyChangeMeta:
-    """Attribution for a policy version (INV-8).
-
-    A weakening change — any hard limit loosened — must carry who acknowledged
-    it and why. That is the entire point of versioning thresholds rather than
-    editing them.
-    """
-
-    created_by: str
-    created_by_role: str
-    source: str  # FILE | UI_EDIT | SEED
-    created_at: datetime | None = None
-    parent_version_id: int | None = None
-    change_summary: str | None = None
-    is_weakening: bool = False
-    weakening_ack_by: str | None = None
-    weakening_reason: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.source not in {"FILE", "UI_EDIT", "SEED"}:
-            raise ValueError(
-                f"source must be FILE, UI_EDIT or SEED; got {self.source!r}"
-            )
-        if self.is_weakening and not (self.weakening_ack_by and self.weakening_reason):
-            raise ValueError(
-                "a weakening policy change requires weakening_ack_by and "
-                "weakening_reason (INV-8)"
-            )
-
-
-@dataclass(frozen=True)
-class MarketSnapshotMeta:
-    """Provenance for one market-data panel."""
-
-    captured_at: datetime
-    as_of_date: str
-    provider: str
-    universe_hash: str
-    data_hash: str
-    row_count: int
-    asset_count: int
-    validation_status: str
-    validation_json: str
-    cache_path: str | None = None
-
-
-@dataclass(frozen=True)
-class DecisionContext:
-    """Everything known when a decision cycle opens."""
-
-    event_uid: str
-    created_at: datetime
-    trigger_type: str
-    trigger_detail: str | None
-    snapshot_id: int
-    policy_version_id: int
-    portfolio_state_before: int
-    risk_snapshot_before: int
-    control_status: str
-    circuit_breaker_active: bool
-    breaker_trigger_category: str | None = None
-    optimizer_strategy: str | None = None
-    expected_return_method: str | None = None
-    solver_status: str | None = None
-    recommended_candidate_id: int | None = None
 
 
 class AuditRepository:
@@ -564,37 +494,304 @@ class AuditRepository:
         except sqlite3.Error as e:
             raise AuditWriteError(f"failed to close decision {decision_id}: {e}") from e
 
+
+    def record_control_findings(
+        self,
+        decision_id: int,
+        findings: Sequence[Breach],
+        candidate_id: int | None = None,
+        created_at: datetime | None = None,
+    ) -> int:
+        """Persist the control engine's findings for one candidate.
+
+        Every finding carries its observed value AND its threshold, so the UI
+        can show "43.0% > 35.0%" rather than "constraints violated" (FR-174).
+        A finding written without them cannot be explained later.
+
+        All findings are written in one transaction: a partial set would
+        misrepresent the verdict. Returns the number of rows written.
+        """
+        if not findings:
+            return 0
+        stamp = (created_at or _now()).isoformat()
+        try:
+            with transaction(self.conn):
+                self.conn.executemany(
+                    """
+                    INSERT INTO control_findings (
+                        decision_id, candidate_id, created_at, control_code,
+                        control_label, severity, is_hard, observed_value,
+                        threshold_value, comparator, scope, message
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            decision_id,
+                            candidate_id,
+                            stamp,
+                            b.control_code,
+                            b.control_label,
+                            b.severity.value,
+                            int(b.is_hard),
+                            b.observed,
+                            b.threshold,
+                            b.comparator.value,
+                            b.scope,
+                            b.message,
+                        )
+                        for b in findings
+                    ],
+                )
+            return len(findings)
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to record control findings: {e}") from e
+
+    def record_stress_results(
+        self,
+        decision_id: int,
+        results: Sequence[StressResult],
+        candidate_id: int | None = None,
+        created_at: datetime | None = None,
+    ) -> int:
+        """Persist stress-scenario outcomes for one candidate.
+
+        Both ``passed`` and the full ``status`` are stored. NOT_RUN and ERROR
+        are never equivalent to PASSED, and after an incident the difference
+        between "the portfolio failed the scenario" and "the stress engine
+        errored" is exactly what someone needs from the audit trail (INV-10).
+
+        Returns the number of rows written.
+        """
+        if not results:
+            return 0
+        stamp = (created_at or _now()).isoformat()
+        try:
+            with transaction(self.conn):
+                self.conn.executemany(
+                    """
+                    INSERT INTO stress_results (
+                        decision_id, candidate_id, created_at, scenario_code,
+                        scenario_label, is_custom, shocks_json, portfolio_loss,
+                        loss_paise, contribution_json, post_shock_vol,
+                        post_shock_cvar, breaches_json, passed, loss_threshold,
+                        status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            decision_id,
+                            candidate_id,
+                            stamp,
+                            r.scenario_code,
+                            r.scenario_label,
+                            int(r.is_custom),
+                            dumps(r.shocks),
+                            r.portfolio_loss,
+                            r.loss_paise,
+                            dumps(r.contribution),
+                            r.post_shock_volatility,
+                            r.post_shock_cvar,
+                            breaches_to_json(r.breaches),
+                            int(r.status is StressStatus.PASSED),
+                            r.loss_threshold,
+                            r.status.value,
+                        )
+                        for r in results
+                    ],
+                )
+            return len(results)
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to record stress results: {e}") from e
+
+    def record_event(self, decision_id: int, event: DecisionEvent) -> int:
+        """Append one row to the decision timeline.
+
+        ``sequence_no`` is unique per decision, enforced by the schema. A
+        duplicate is a bug in the caller's ordering, not something to
+        overwrite — replay orders by this column, never by wall clock.
+        """
+        try:
+            with transaction(self.conn):
+                cur = self.conn.execute(
+                    """
+                    INSERT INTO decision_events (
+                        decision_id, sequence_no, occurred_at, actor, event_code,
+                        summary, detail_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        decision_id,
+                        event.sequence_no,
+                        event.occurred_at.isoformat(),
+                        event.actor.value,
+                        event.event_code,
+                        event.summary,
+                        dumps(event.detail) if event.detail is not None else None,
+                    ),
+                )
+                return int(cur.lastrowid or 0)
+        except sqlite3.IntegrityError as e:
+            raise AuditWriteError(
+                f"decision {decision_id} already has an event at sequence "
+                f"{event.sequence_no}: {e}"
+            ) from e
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to record event: {e}") from e
+
+    def raise_alert(self, alert: Alert, decision_id: int | None = None) -> int:
+        """Persist an alert raised by the engines.
+
+        The engines CONSTRUCT alerts and perform no I/O; persistence happens
+        here, at the edge.
+        """
+        try:
+            with transaction(self.conn):
+                cur = self.conn.execute(
+                    """
+                    INSERT INTO alerts (
+                        created_at, decision_id, severity, category, title, message
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        alert.created_at.isoformat(),
+                        decision_id,
+                        alert.severity,
+                        alert.category.value,
+                        alert.title,
+                        alert.message,
+                    ),
+                )
+                return int(cur.lastrowid or 0)
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to raise alert: {e}") from e
+
+    def promote_safe_allocation(
+        self,
+        decision_id: int,
+        candidate_id: int,
+        portfolio_state_id: int,
+        portfolio_id: str = "DEMO_100CR",
+        approved_at: datetime | None = None,
+    ) -> int:
+        """Record a new Last Approved Safe Allocation.
+
+        Only a candidate the control engine passed AND stress validation
+        passed may be promoted, unless it was approved through an explicit,
+        recorded override. That is re-checked against the PERSISTED candidate
+        row rather than trusting the caller: the approval gate is enforced
+        server-side, and a disabled button is convenience, not enforcement
+        (INV-2, INV-10).
+
+        ``approved_by`` and ``via_override`` are read from the decision's
+        recorded human action, so a promotion cannot claim an approver the
+        audit trail does not have (INV-6).
+
+        Raises:
+            AuditWriteError: If the candidate is not eligible and was not
+                approved via a recorded override, or if the decision has no
+                recorded human action.
+        """
+        try:
+            with transaction(self.conn):
+                cand = self.conn.execute(
+                    """
+                    SELECT eligible_for_approval, control_status, stress_status,
+                           weights_json, decision_id
+                      FROM candidate_allocations
+                     WHERE candidate_id = ?
+                    """,
+                    (candidate_id,),
+                ).fetchone()
+                if cand is None:
+                    raise AuditWriteError(f"candidate {candidate_id} does not exist")
+                if int(cand["decision_id"]) != decision_id:
+                    owner = cand["decision_id"]
+                    raise AuditWriteError(
+                        f"candidate {candidate_id} belongs to decision {owner}, "
+                        f"not {decision_id}"
+                    )
+
+                human = self.conn.execute(
+                    """
+                    SELECT user_identity, is_override
+                      FROM human_actions
+                     WHERE decision_id = ?
+                     ORDER BY action_id ASC LIMIT 1
+                    """,
+                    (decision_id,),
+                ).fetchone()
+                if human is None:
+                    raise AuditWriteError(
+                        f"decision {decision_id} has no recorded human action; an "
+                        "allocation is never promoted without one (INV-6)"
+                    )
+
+                via_override = bool(human["is_override"])
+                if not cand["eligible_for_approval"] and not via_override:
+                    control, stress = cand["control_status"], cand["stress_status"]
+                    raise AuditWriteError(
+                        f"candidate {candidate_id} is not eligible for approval "
+                        f"(control {control}, stress {stress}) and was not approved "
+                        "through a recorded override (INV-2, INV-10)"
+                    )
+
+                decision = self.conn.execute(
+                    "SELECT policy_version_id FROM decision_records "
+                    "WHERE decision_id = ?",
+                    (decision_id,),
+                ).fetchone()
+
+                cur = self.conn.execute(
+                    """
+                    INSERT INTO safe_allocations (
+                        portfolio_id, approved_at, decision_id, candidate_id,
+                        portfolio_state_id, weights_json, policy_version_id,
+                        approved_by, via_override
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        portfolio_id,
+                        (approved_at or _now()).isoformat(),
+                        decision_id,
+                        candidate_id,
+                        portfolio_state_id,
+                        cand["weights_json"],
+                        decision["policy_version_id"],
+                        human["user_identity"],
+                        int(via_override),
+                    ),
+                )
+                return int(cur.lastrowid or 0)
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to promote safe allocation: {e}") from e
+
     # ------------------------------------------------------------------
     # reads
+    #
+    # Thin delegations to cce.audit.queries. The repository stays the single
+    # sanctioned surface; the SQL lives next to the read models it builds.
     # ------------------------------------------------------------------
 
     def get_last_safe_allocation(self, portfolio_id: str) -> SafeAllocation | None:
-        """The Last Approved Safe Allocation, or ``None`` if there is none.
+        """The Last Approved Safe Allocation, or ``None`` if there is none."""
+        return queries.get_last_safe_allocation(self.conn, portfolio_id)
 
-        ``None`` means no allocation has ever been approved for this
-        portfolio. The caller preserves the current allocation rather than
-        inventing one (INV-4).
-        """
-        row = self.conn.execute(
-            """
-            SELECT safe_allocation_id, approved_at, weights_json, decision_id,
-                   policy_version_id, approved_by, via_override
-              FROM safe_allocations
-             WHERE portfolio_id = ?
-             ORDER BY approved_at DESC, safe_allocation_id DESC
-             LIMIT 1
-            """,
-            (portfolio_id,),
-        ).fetchone()
-        if row is None:
-            return None
+    def get_decision(self, decision_id: int) -> StoredDecision:
+        """One complete decision, exactly as persisted."""
+        return queries.get_decision(self.conn, decision_id)
 
-        return SafeAllocation(
-            safe_allocation_id=int(row["safe_allocation_id"]),
-            approved_at=_parse_dt(row["approved_at"]),
-            weights={k: float(v) for k, v in json.loads(row["weights_json"]).items()},
-            decision_id=int(row["decision_id"]),
-            policy_version_id=int(row["policy_version_id"]),
-            approved_by=row["approved_by"],
-            via_override=bool(row["via_override"]),
-        )
+    def get_replay_timeline(self, decision_id: int) -> list[DecisionEvent]:
+        """The decision timeline, from persisted events only (INV-6)."""
+        return queries.get_replay_timeline(self.conn, decision_id)
+
+    def list_decisions(self, limit: int = 50, offset: int = 0) -> list[DecisionSummary]:
+        """Decision history, newest first."""
+        return queries.list_decisions(self.conn, limit, offset)
+
+    def get_current_policy(self) -> Policy:
+        """The most recent policy version."""
+        return queries.get_current_policy(self.conn)
+
+    def get_policy_version(self, policy_version_id: int) -> Policy:
+        """The policy in force for a given version id (INV-8)."""
+        return queries.get_policy_version(self.conn, policy_version_id)
