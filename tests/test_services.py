@@ -570,3 +570,29 @@ class TestDecisionExplanation:
             assert "validity" not in rc["metric"].lower(), (
                 f"a validity control leaked into main_contributors: {rc}"
             )
+
+
+class TestTheDemoPortfolioIsWhatEveryDocumentClaims:
+    """The headline number is ₹100 Cr in every document and on the dashboard.
+
+    The seed once said 1e12 paise — ₹1,000 Cr, ten times over. Nothing caught
+    it: no test asserted the demo's own size, and ₹1,000 Cr is a perfectly
+    plausible figure for an institutional book. It was found by printing the
+    value in a pre-demo drill.
+    """
+
+    def test_the_portfolio_is_one_hundred_crore(self, ctx):
+        from cce.portfolio import DEFAULT_CAPITAL_PAISE
+
+        state = PortfolioService(ctx).get_current_state()
+        assert state.total_value_paise == DEFAULT_CAPITAL_PAISE
+        assert state.total_value_crore == pytest.approx(100.0)
+
+    def test_positions_reconcile_to_the_capital_exactly(self, ctx):
+        """To the paise. Largest-remainder, not per-position rounding."""
+        state = PortfolioService(ctx).get_current_state()
+        assert sum(p.value_paise for p in state.positions) == state.total_value_paise
+
+    def test_the_seed_weights_sum_to_one(self, ctx):
+        state = PortfolioService(ctx).get_current_state()
+        assert sum(state.weights.values()) == pytest.approx(1.0)

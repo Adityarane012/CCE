@@ -76,6 +76,10 @@ ignore = [
 # app.py must call st.set_page_config before any other Streamlit call, so its
 # imports cannot all sit at the top.
 "app.py" = ["E402"]
+# scripts/ are executables that must bootstrap sys.path before importing
+# cce, and demo_drill asserts on caught exceptions by design — it is a
+# drill runner, not a pytest module.
+"scripts/*" = ["E402", "PT017"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["cce", "ui", "tests"]
