@@ -19,7 +19,13 @@ from dataclasses import dataclass
 from .enums import Comparator, RiskState, Scope
 from .optimization import Constraints
 
-__all__ = ["Threshold", "ModelParams", "Policy"]
+__all__ = ["Threshold", "ModelParams", "Policy", "BAND_TOLERANCE"]
+
+# Absorbs floating-point representation error at a band edge. A solver that
+# satisfies `x <= 0.25` exactly may return 0.2500000001; that must not flip a
+# control from AMBER to RED. Tiny by design: it forgives float noise, never a
+# real breach.
+BAND_TOLERANCE = 1e-9
 
 
 @dataclass(frozen=True)
@@ -56,22 +62,48 @@ class Threshold:
                     f"{self.control_code}: amber_min must be <= green_min"
                 )
 
-    def classify(self, value: float) -> RiskState:
-        """Classify an observed value. Boundaries fall to the less severe band."""
+    def classify(self, value: float, tolerance: float = BAND_TOLERANCE) -> RiskState:
+        """Classify an observed value. Boundaries fall to the less severe band.
+
+        ``tolerance`` absorbs floating-point noise at a band edge. Without it
+        a solver that satisfies ``turnover <= 0.25`` exactly can land on
+        0.2500000001 and be classified RED — the constrained optimum failing
+        the very policy it was optimised under, decided by the last bit of a
+        float. A control must not turn on 1e-9.
+
+        It is deliberately tiny: it forgives representation error, never a
+        real breach.
+        """
         if self.comparator in (Comparator.GT, Comparator.GTE):
-            if value <= self.green_max:      # type: ignore[operator]
+            if value <= self.green_max + tolerance:   # type: ignore[operator]
                 return RiskState.GREEN
-            if value <= self.amber_max:      # type: ignore[operator]
+            if value <= self.amber_max + tolerance:   # type: ignore[operator]
                 return RiskState.AMBER
             return RiskState.RED
-        if value >= self.green_min:          # type: ignore[operator]
+        if value >= self.green_min - tolerance:       # type: ignore[operator]
             return RiskState.GREEN
-        if value >= self.amber_min:          # type: ignore[operator]
+        if value >= self.amber_min - tolerance:       # type: ignore[operator]
             return RiskState.AMBER
         return RiskState.RED
 
+    def crossed_threshold(self, state: RiskState) -> float:
+        """The limit that was actually crossed to reach ``state``.
+
+        An AMBER breach crossed the GREEN band edge, not the amber one.
+        Reporting ``amber_max`` for an AMBER breach produces messages like
+        "26% exceeds the AMBER limit of 35%", which is not merely confusing —
+        it is false, and it is the number the UI shows beside the observed
+        value.
+        """
+        gt = self.comparator in (Comparator.GT, Comparator.GTE)
+        if state is RiskState.AMBER:
+            return float(self.green_max if gt else self.green_min)  # type: ignore[arg-type]
+        if state is RiskState.RED:
+            return float(self.amber_max if gt else self.amber_min)  # type: ignore[arg-type]
+        return float(self.green_max if gt else self.green_min)      # type: ignore[arg-type]
+
     def red_threshold(self) -> float:
-        """The value at which this control turns RED — for breach messages."""
+        """The value at which this control turns RED."""
         if self.comparator in (Comparator.GT, Comparator.GTE):
             return float(self.amber_max)     # type: ignore[arg-type]
         return float(self.amber_min)         # type: ignore[arg-type]

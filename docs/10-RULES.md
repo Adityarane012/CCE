@@ -166,12 +166,38 @@ Guaranteed optimal returns · guaranteed regulatory compliance · crash predicti
 ### 5.2 Always say
 Prototype · decision-support system · constraint-aware optimization · near-real-time / event-driven · configurable risk policies · simulated execution · demonstration of institutional control concepts.
 
-### 5.3 Naming discipline
+### 5.3 Every number shown must come from a real run
+
+**No figure in the UI, the demo script, a slide, or a README may be typed by
+hand.** Every number a judge sees must be reproducible by running the system
+on the committed data.
+
+This is not pedantry — it is the difference between a working control system
+and a mockup of one. A judge who asks *"can you show me that again?"* and gets
+a different number has learned the whole thing is staged.
+
+| Where a number appears | It must be |
+|---|---|
+| UI | rendered from a service-layer result |
+| Demo script | copied from an actual run, with the command that produced it |
+| Specs and mockups | labelled **illustrative** if not from a run |
+| README | from a real run, and re-checked when the data changes |
+
+**Illustrative examples are permitted in specification documents**, because a
+spec is written before the code exists. They MUST be marked as illustrative.
+An unmarked number in a spec becomes a fabricated number in a demo the moment
+someone copies it forward, which is exactly how this rule came to be written.
+
+**If the data does not support the story, change the story.** Do not adjust
+the numbers to fit a narrative. A less dramatic true result beats a compelling
+false one, and it survives questioning.
+
+### 5.4 Naming discipline
 - **"Last Approved Safe Allocation"** — never shortened to anything implying ongoing guaranteed safety. It passed *those* controls at *that* time.
 - **"Model Estimate"** on every expected-return figure.
 - **`[DEMO-CONFIG]`** on every threshold in any presentation. They are prototype settings, not institutional standards.
 
-### 5.4 Do not build
+### 5.5 Do not build
 - A retail stock-picking app
 - An autonomous trading bot
 - TradingAgents as a dependency

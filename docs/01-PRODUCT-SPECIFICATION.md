@@ -187,6 +187,18 @@ Parametric VaR · Monte Carlo VaR · ADV-based liquidity · custom scenario buil
 
 ## 8. Signature features in detail
 
+> **Every number in this section is ILLUSTRATIVE**, written before the engine
+> existed to show the SHAPE of each feature. None is a measured output.
+>
+> Measured results as of Phase 4, on the committed Aug 2023 – Aug 2026 data:
+> the unconstrained optimum is PHARMA 30% / GOLD 30% / CORPBOND 27%, rejected
+> on the cash floor (2% < 3%) and turnover (67.4% > 25%) — not on banking
+> concentration. Banking reaches 58% *risk contribution* at a 43% weight, so
+> the concentration story is real but needs a trigger to arise naturally.
+>
+> Per `10-RULES.md` §5.3, no illustrative figure here may be copied into the
+> UI, the demo script or a slide.
+
 ### 8.1 Safe vs Optimal
 
 The dashboard displays two portfolios simultaneously:
