@@ -1,0 +1,102 @@
+# ─────────────────────────────────────────────────────────────
+# CCE — Capital Control Engine
+# ─────────────────────────────────────────────────────────────
+
+# Documentation (excluded by project decision)
+# NOTE: must be `docs/*` not `docs/` — git cannot re-include a file
+# whose parent DIRECTORY is excluded, so `!docs/CLAUDE.md` would be
+# silently ignored under a `docs/` rule.
+docs/*
+!docs/CLAUDE.md
+# ── Secrets ──────────────────────────────────────────────────
+.env
+.env.*
+.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+
+# ── Database (recreatable from migrations) ───────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/cce.db
+
+# ── Market data ──────────────────────────────────────────────
+# raw/ and processed/ are regenerable; cache/ is COMMITTED so the
+# demo is reproducible and runs with no network. See docs/02 §8.
+data/raw/
+data/processed/
+!data/cache/
+!data/cache/**
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Virtual environments ─────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# ── Testing / coverage ───────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+# ── Streamlit ────────────────────────────────────────────────
+.streamlit/cache/
+
+# ── Notebooks ────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── claude-mem / agent tooling ───────────────────────────────
+.claude-mem/
+.claude/settings.local.json
+graphify-out/
+
+# ── Editors ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

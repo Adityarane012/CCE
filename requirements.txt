@@ -1,0 +1,24 @@
+# CCE — Capital Control Engine
+# Install:  python -m venv .venv
+#           .venv/Scripts/python.exe -m pip install -r requirements.txt   (Windows)
+#           .venv/bin/python -m pip install -r requirements.txt           (Unix)
+
+# ── Market data ──────────────────────────────────────────────
+# Installed from GitHub (project decision), not PyPI.
+# NOTE: jugaad-data does NOT declare pandas as a dependency — its
+# *_df DataFrame API imports it lazily, so pandas must be explicit.
+jugaad-data @ git+https://github.com/jugaad-py/jugaad-data.git
+
+# ── Numerics ─────────────────────────────────────────────────
+numpy==2.4.6
+pandas==3.0.5
+
+# ── Not yet installed — uncomment as each build phase starts ──
+# See docs/04-WORKFLOW.md Part B for build order.
+# scipy==1.13.1          # phase 3 — risk engine
+# cvxpy==1.5.2           # phase 4 — optimizer
+# pyyaml==6.0.1          # phase 5 — policy config
+# pyarrow==16.1.0        # phase 1 — parquet cache
+# streamlit==1.36.0      # phase 10 — dashboard
+# plotly==5.22.0         # phase 10 — charts
+# pytest==8.2.2          # testing
