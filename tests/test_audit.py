@@ -64,6 +64,7 @@ from cce.contracts import (
 from cce.decisions.explanation import build_explanation
 from cce.decisions.narrator import build_narrated_explanation, render_narrative
 from cce.decisions.replay import reconstruct_timeline
+from cce.exceptions import DecisionAlreadyClosed
 
 WEIGHTS = {"NIFTY50": 0.30, "GSEC": 0.40, "GOLD": 0.20, "CASH": 0.10}
 
@@ -530,7 +531,7 @@ def test_human_action_can_only_be_recorded_once(repo):
     )
     repo.close_decision_with_human_action(decision_id, action, portfolio_state_after=1)
 
-    with pytest.raises(AuditWriteError, match="already closed"):
+    with pytest.raises(DecisionAlreadyClosed, match="already closed"):
         repo.close_decision_with_human_action(
             decision_id, action, portfolio_state_after=1
         )
@@ -589,7 +590,7 @@ def test_a_rejected_close_writes_nothing_at_all(repo, conn):
         timestamp=datetime(2026, 8, 31, 10, 0, tzinfo=UTC),
     )
     repo.close_decision_with_human_action(decision_id, action, portfolio_state_after=1)
-    with pytest.raises(AuditWriteError):
+    with pytest.raises(DecisionAlreadyClosed):
         repo.close_decision_with_human_action(decision_id, action, portfolio_state_after=1)
 
     count = conn.execute(

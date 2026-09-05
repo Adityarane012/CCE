@@ -1,4 +1,4 @@
 from .engine import run_scenario
-from .scenarios import Scenario, load_scenarios
+from .scenarios import LIQUIDITY_KEY, Scenario, load_scenarios
 
-__all__ = ["Scenario", "load_scenarios", "run_scenario"]
+__all__ = ["LIQUIDITY_KEY", "Scenario", "load_scenarios", "run_scenario"]

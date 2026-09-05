@@ -39,6 +39,7 @@ from cce.contracts import (
     StressResult,
     StressStatus,
 )
+from cce.exceptions import AuditWriteError, DecisionAlreadyClosed
 
 from . import queries
 from .database import transaction
@@ -62,8 +63,11 @@ __all__ = [
 ]
 
 
-class AuditWriteError(Exception):
-    """An audit write failed, or would have broken an append-only guarantee."""
+# Re-exported so callers may import it from the repository they use, but
+# defined ONCE in cce.exceptions. Two classes of the same name meant a service
+# catching cce.exceptions.AuditWriteError did not catch what the repository
+# actually raised — the failure mode is silence exactly where FR-125 requires
+# a visible failure.
 
 
 def _now() -> datetime:
@@ -450,7 +454,7 @@ class AuditRepository:
                 if row is None:
                     raise AuditWriteError(f"decision {decision_id} does not exist")
                 if row["human_action"] is not None:
-                    raise AuditWriteError(
+                    raise DecisionAlreadyClosed(
                         f"decision {decision_id} already closed with a human action "
                         f"({row['human_action']}); records are append-only (INV-6)"
                     )

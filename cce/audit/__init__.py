@@ -15,6 +15,8 @@ write cannot succeed (INV-6).
 
 from __future__ import annotations
 
+from cce.exceptions import AuditWriteError, DecisionAlreadyClosed
+
 from .database import default_db_path, get_connection, run_migrations, transaction
 from .events import (
     EVENT_ACTORS,
@@ -44,7 +46,7 @@ from .models import (
     StoredHumanAction,
     StoredStressResult,
 )
-from .repository import AuditRepository, AuditWriteError
+from .repository import AuditRepository
 
 __all__ = [
     "EVENT_ACTORS",
@@ -64,6 +66,7 @@ __all__ = [
     "EVENT_TRIGGER_RECEIVED",
     "AuditRepository",
     "AuditWriteError",
+    "DecisionAlreadyClosed",
     "DecisionContext",
     "DecisionSummary",
     "MarketSnapshotMeta",

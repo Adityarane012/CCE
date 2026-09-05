@@ -18,10 +18,60 @@ from .enums import (
     ControlStatus,
     StressStatus,
 )
+from .market import Universe
 from .optimization import OptimizationResult
 from .risk import Breach, RiskSnapshot
 
-__all__ = ["Alert", "Candidate", "ControlResult", "StressResult"]
+__all__ = [
+    "LIQUIDITY_KEY",
+    "Alert",
+    "Candidate",
+    "ControlResult",
+    "Scenario",
+    "StressResult",
+]
+
+#: Pseudo-sector recognised by the stress engine: it scales every asset's
+#: ADV rather than shocking a price. Neither an asset id nor a sector, so
+#: it is excluded from the unresolved-key check below.
+LIQUIDITY_KEY = "LIQUIDITY"
+
+
+@dataclass(frozen=True)
+class Scenario:
+    """A stress scenario: instantaneous shocks by asset id or sector.
+
+    Lives here rather than in ``cce/stress/`` because both the config
+    loader and the stress engine need it, and two definitions of the same
+    thing is how they drift apart — which is exactly what happened: an
+    identical ``ScenarioDefinition`` existed in ``cce/config.py`` with its
+    own loader reading the same YAML file.
+    """
+
+    code: str
+    label: str
+    shocks: dict[str, float]
+    is_custom: bool = False
+
+    @classmethod
+    def custom(cls, label: str, shocks: dict[str, float]) -> Scenario:
+        """An ad-hoc scenario built in the UI rather than loaded from config."""
+        return cls(code="CUSTOM", label=label, shocks=dict(shocks), is_custom=True)
+
+    def unresolved_keys(self, universe: Universe) -> tuple[str, ...]:
+        """Shock keys matching no asset id and no sector in the universe.
+
+        Shocks resolve by asset id first, then by sector. A key matching
+        neither applies to nothing and is silently dropped — so a typo in
+        ``config/scenarios.yaml`` (``BANKNIFTY`` where the sector is
+        ``BANKING``) produces a scenario that shocks nothing, measures a
+        zero loss, and PASSES. That is a false safety signal on the one
+        gate whose job is to catch what ordinary metrics miss (INV-10).
+        """
+        known = {a.asset_id for a in universe.assets}
+        known |= {a.sector for a in universe.assets}
+        known.add(LIQUIDITY_KEY)
+        return tuple(sorted(k for k in self.shocks if k not in known))
 
 
 @dataclass(frozen=True)

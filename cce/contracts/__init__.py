@@ -10,7 +10,14 @@ silently (NFR-021).
 
 from __future__ import annotations
 
-from .control import Alert, Candidate, ControlResult, StressResult
+from .control import (
+    LIQUIDITY_KEY,
+    Alert,
+    Candidate,
+    ControlResult,
+    Scenario,
+    StressResult,
+)
 from .decision import (
     DecisionEvent,
     DecisionRecord,
@@ -71,7 +78,7 @@ __all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     "Breach", "RiskSnapshot", "RiskChange",
     # optimization / control
     "Constraints", "OptimizationResult", "ControlResult", "StressResult",
-    "Candidate", "Alert",
+    "Candidate", "Alert", "Scenario", "LIQUIDITY_KEY",
     # policy
     "Threshold", "ModelParams", "Policy",
     # decision

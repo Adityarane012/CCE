@@ -25,6 +25,7 @@ from .contracts import (
     DataProvider,
     ModelParams,
     Policy,
+    Scenario,
     Scope,
     Threshold,
     Universe,
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 __all__ = [
-    "ScenarioDefinition",
     "Settings",
     "get_settings",
     "load_policy",
@@ -216,24 +216,18 @@ def load_policy(path: Path | None = None) -> Policy:
     )
 
 
-@dataclass(frozen=True)
-class ScenarioDefinition:
-    """A named stress scenario loaded from configuration."""
+def load_scenarios(path: Path | None = None) -> tuple[Scenario, ...]:
+    """Load the default stress scenarios.
 
-    code: str
-    label: str
-    shocks: dict[str, float]
-    is_custom: bool = False
-
-
-def load_scenarios(path: Path | None = None) -> tuple[ScenarioDefinition, ...]:
-    """Load the default stress scenarios."""
+    The single loader for ``config/scenarios.yaml``. ``cce.stress.scenarios``
+    re-exports this rather than parsing the file a second time.
+    """
     path = path or get_settings().scenarios_file
     raw = _read_yaml(path)
-    out: list[ScenarioDefinition] = []
+    out: list[Scenario] = []
     for s in raw.get("scenarios") or []:
         out.append(
-            ScenarioDefinition(
+            Scenario(
                 code=s["code"],
                 label=s["label"],
                 shocks={k: float(v) for k, v in (s.get("shocks") or {}).items()},

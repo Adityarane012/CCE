@@ -62,6 +62,7 @@ from cce.contracts import (
 from cce.controls.validation import validate
 from cce.decisions.explanation import build_explanation
 from cce.decisions.narrator import build_narrated_explanation, render_narrative
+from cce.exceptions import DecisionAlreadyClosed
 from tests.fixtures import synthetic
 
 NOW = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
@@ -556,7 +557,7 @@ class TestINV6_EveryDecisionIsAuditable:
     def test_a_decision_cannot_be_closed_twice(self, repo):
         decision_id = open_decision(repo)
         approve(repo, decision_id)
-        with pytest.raises(AuditWriteError, match="already closed"):
+        with pytest.raises(DecisionAlreadyClosed, match="already closed"):
             approve(repo, decision_id)
 
     def test_a_failed_write_is_never_reported_as_success(self, repo):
