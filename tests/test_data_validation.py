@@ -8,7 +8,7 @@ also what lets the demo run disconnected (NFR-010).
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -16,9 +16,16 @@ import pytest
 
 from cce.contracts import DataProvider, RiskState, ValidationStatus
 from cce.data import (
-    DEFAULT_CACHE_DIR, CachedDataProvider, IST_OFFSET, align_calendar,
-    build_market_data, panel_hash, to_trading_date, universe_hash,
-    validate_panel, write_cache,
+    DEFAULT_CACHE_DIR,
+    IST_OFFSET,
+    CachedDataProvider,
+    align_calendar,
+    build_market_data,
+    panel_hash,
+    to_trading_date,
+    universe_hash,
+    validate_panel,
+    write_cache,
 )
 from cce.exceptions import DataIntegrityError
 
@@ -358,9 +365,10 @@ class TestSnapshotMode:
     def test_cached_fallback_is_not_exempt(self) -> None:
         """EC-2.1. Wanting live data and silently getting old data is exactly
         what DATA_FRESHNESS exists to catch."""
-        from cce.data import load_market_data
         # load_market_data passes snapshot_mode only for CACHED, never for
         # CACHED_FALLBACK - asserted structurally here.
         import inspect
+
+        from cce.data import load_market_data
         src = inspect.getsource(load_market_data)
         assert "snapshot_mode=(used is DataProvider.CACHED)" in src

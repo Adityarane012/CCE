@@ -16,7 +16,7 @@ import pandas as pd
 
 from .market import Universe
 
-__all__ = ["Position", "PortfolioState", "WEIGHT_TOLERANCE", "PAISE_PER_RUPEE"]
+__all__ = ["PAISE_PER_RUPEE", "WEIGHT_TOLERANCE", "PortfolioState", "Position"]
 
 WEIGHT_TOLERANCE = 1e-6
 PAISE_PER_RUPEE = 100

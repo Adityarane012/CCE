@@ -21,8 +21,12 @@ from dataclasses import dataclass
 from ..contracts import Universe
 
 __all__ = [
-    "DEFAULT_PARTICIPATION_RATE", "liquid_share", "cash_share",
-    "days_to_liquidate", "liquidity_summary", "LiquidityProfile",
+    "DEFAULT_PARTICIPATION_RATE",
+    "LiquidityProfile",
+    "cash_share",
+    "days_to_liquidate",
+    "liquid_share",
+    "liquidity_summary",
 ]
 
 # [DEMO-CONFIG] share of a day's traded value we assume we can be

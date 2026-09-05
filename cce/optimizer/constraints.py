@@ -19,8 +19,12 @@ import numpy as np
 
 from ..contracts import Constraints, Universe
 
-__all__ = ["build_constraints", "turnover_expr", "transaction_cost_expr",
-           "describe_infeasibility"]
+__all__ = [
+    "build_constraints",
+    "describe_infeasibility",
+    "transaction_cost_expr",
+    "turnover_expr",
+]
 
 
 def turnover_expr(w: cp.Variable, current: np.ndarray) -> cp.Expression:

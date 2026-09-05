@@ -16,16 +16,22 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 
 from ..contracts import (
-    ExpectedReturnMethod, MarketData, RiskSnapshot, RiskState, Universe,
+    ExpectedReturnMethod,
+    MarketData,
+    RiskSnapshot,
+    RiskState,
+    Universe,
     VaRMethod,
 )
 from ..portfolio.calculations import (
-    portfolio_returns, sector_exposure, turnover,
+    portfolio_returns,
+    sector_exposure,
+    turnover,
 )
 from .concentration import concentration_summary
 from .covariance import CovarianceReport, estimate_covariance
@@ -35,7 +41,8 @@ from .ewma import DEFAULT_LAMBDA, ewma_volatility
 from .expected_returns import expected_returns
 from .liquidity import liquidity_summary
 from .risk_contribution import (
-    risk_contribution_table, sector_risk_contributions,
+    risk_contribution_table,
+    sector_risk_contributions,
 )
 from .var import MIN_OBSERVATIONS, historical_var
 from .volatility import TRADING_DAYS, historical_volatility, portfolio_volatility

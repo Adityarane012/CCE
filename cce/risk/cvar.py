@@ -20,8 +20,12 @@ import pandas as pd
 
 from .var import MIN_OBSERVATIONS, historical_var
 
-__all__ = ["CVaRResult", "historical_cvar", "cvar_with_diagnostics",
-           "MIN_TAIL_OBSERVATIONS"]
+__all__ = [
+    "MIN_TAIL_OBSERVATIONS",
+    "CVaRResult",
+    "cvar_with_diagnostics",
+    "historical_cvar",
+]
 
 # Below this many points beyond VaR, the mean of the tail is unstable.
 MIN_TAIL_OBSERVATIONS = 10

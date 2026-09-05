@@ -6,12 +6,24 @@ Spec: docs/IMPLEMENTATION-PLAN.md Phase 6, INV-4, EC-5.1, EC-5.2.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
 import pytest
 
 from cce.contracts import (
-    Breach, BreakerCategory, Candidate, CandidateRole, Comparator,
-    ControlResult, ControlStatus, OptimizationResult, RiskState, SafeAllocation,
-    Scope, SolverStatus, Strategy, ExpectedReturnMethod,
+    Breach,
+    BreakerCategory,
+    Candidate,
+    CandidateRole,
+    Comparator,
+    ControlResult,
+    ControlStatus,
+    ExpectedReturnMethod,
+    OptimizationResult,
+    RiskState,
+    SafeAllocation,
+    Scope,
+    SolverStatus,
+    Strategy,
 )
 from cce.contracts.risk import RiskSnapshot
 from cce.controls.circuit_breaker import evaluate_breaker
@@ -38,9 +50,10 @@ def safe_allocation(now) -> SafeAllocation:
 @pytest.fixture(scope="module")
 def env():
     from datetime import date
+
     from cce.config import load_policy, load_universe
-    from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
     from cce.contracts import DataProvider
+    from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
     u, pol = load_universe(), load_policy()
     p = CachedDataProvider(DEFAULT_CACHE_DIR).fetch_prices(
         u, date(2000, 1, 1), date(2030, 1, 1)

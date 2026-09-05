@@ -21,12 +21,17 @@ import numpy as np
 import pytest
 
 from cce.contracts import (
-    Constraints, DataProvider, ExpectedReturnMethod, SolverStatus, Strategy,
+    DataProvider,
+    SolverStatus,
 )
-from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
+from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 from cce.optimizer import (
-    MaxSharpeOptimizer, OptimizerInputs, describe_infeasibility,
-    efficient_frontier, solve_min_variance, solve_unconstrained_max_sharpe,
+    MaxSharpeOptimizer,
+    OptimizerInputs,
+    describe_infeasibility,
+    efficient_frontier,
+    solve_min_variance,
+    solve_unconstrained_max_sharpe,
 )
 from cce.risk import estimate_covariance, expected_returns, portfolio_volatility
 

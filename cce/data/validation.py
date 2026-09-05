@@ -16,15 +16,20 @@ import numpy as np
 import pandas as pd
 
 from ..contracts import (
-    DataProvider, MarketData, RiskState, Universe, ValidationFinding,
-    ValidationReport, ValidationStatus,
+    DataProvider,
+    MarketData,
+    RiskState,
+    Universe,
+    ValidationFinding,
+    ValidationReport,
+    ValidationStatus,
 )
 from ..exceptions import DataIntegrityError
 from .providers import panel_hash, universe_hash
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["validate_panel", "build_market_data", "ValidationThresholds"]
+__all__ = ["ValidationThresholds", "build_market_data", "validate_panel"]
 
 # [DEMO-CONFIG] mirrors config/policy.yaml DATA_* thresholds.
 MAX_STALE_TRADING_DAYS_GREEN = 1
@@ -211,12 +216,12 @@ def validate_panel(
                 f"{col}: non-positive price present; returns are undefined",
             ))
 
-    worst = _worst(findings)
+    worst_state = _worst(findings)
     status = {
         RiskState.GREEN: ValidationStatus.VALID,
         RiskState.AMBER: ValidationStatus.DEGRADED,
         RiskState.RED: ValidationStatus.INVALID,
-    }[worst]
+    }[worst_state]
 
     return ValidationReport(
         status=status, findings=tuple(findings),

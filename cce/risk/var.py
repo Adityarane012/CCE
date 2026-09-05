@@ -18,7 +18,10 @@ import pandas as pd
 from scipy import stats
 
 __all__ = [
-    "MIN_OBSERVATIONS", "historical_var", "parametric_var", "monte_carlo_var",
+    "MIN_OBSERVATIONS",
+    "historical_var",
+    "monte_carlo_var",
+    "parametric_var",
     "scale_var_horizon",
 ]
 

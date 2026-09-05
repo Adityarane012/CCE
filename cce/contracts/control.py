@@ -13,12 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .enums import (
-    BreakerCategory, CandidateRole, ControlStatus, StressStatus,
+    BreakerCategory,
+    CandidateRole,
+    ControlStatus,
+    StressStatus,
 )
 from .optimization import OptimizationResult
 from .risk import Breach, RiskSnapshot
 
-__all__ = ["ControlResult", "StressResult", "Candidate", "Alert"]
+__all__ = ["Alert", "Candidate", "ControlResult", "StressResult"]
 
 
 @dataclass(frozen=True)

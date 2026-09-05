@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..contracts import (
-    Actor, Alert, BreakerCategory, Candidate, DecisionEvent, SafeAllocation,
+    Actor,
+    Alert,
+    BreakerCategory,
+    Candidate,
+    DecisionEvent,
+    SafeAllocation,
 )
 
 __all__ = ["BreakerOutcome", "evaluate_breaker"]

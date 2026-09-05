@@ -17,7 +17,7 @@ from datetime import date, datetime
 
 from .enums import Comparator, ExpectedReturnMethod, RiskState, Scope, VaRMethod
 
-__all__ = ["Breach", "RiskSnapshot", "RiskChange"]
+__all__ = ["Breach", "RiskChange", "RiskSnapshot"]
 
 
 @dataclass(frozen=True)

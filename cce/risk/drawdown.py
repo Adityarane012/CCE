@@ -19,7 +19,10 @@ from __future__ import annotations
 import pandas as pd
 
 __all__ = [
-    "equity_curve", "drawdown_series", "current_drawdown", "max_drawdown",
+    "current_drawdown",
+    "drawdown_series",
+    "equity_curve",
+    "max_drawdown",
     "rolling_max_drawdown",
 ]
 

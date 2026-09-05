@@ -22,8 +22,11 @@ from ..contracts import Comparator, Policy, Threshold
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "ThresholdChange", "PolicyChangePreview", "diff_policies",
-    "is_weakening", "MATERIAL_CHANGE",
+    "MATERIAL_CHANGE",
+    "PolicyChangePreview",
+    "ThresholdChange",
+    "diff_policies",
+    "is_weakening",
 ]
 
 # A relative band change beyond this is "substantial" and triggers the modal

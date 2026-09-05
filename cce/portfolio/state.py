@@ -14,15 +14,21 @@ import logging
 from datetime import datetime, timezone
 
 from ..contracts import (
-    PAISE_PER_CRORE, MarketData, PortfolioState, Position, Universe,
+    PAISE_PER_CRORE,
+    MarketData,
+    PortfolioState,
+    Position,
+    Universe,
 )
 from .calculations import allocate_paise, portfolio_returns, value_to_units
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "DEFAULT_CAPITAL_PAISE", "build_portfolio_state", "rebalance_to",
+    "DEFAULT_CAPITAL_PAISE",
+    "build_portfolio_state",
     "normalise_weights",
+    "rebalance_to",
 ]
 
 # Rs 100 Cr. Large enough to make institutional liquidity and transaction

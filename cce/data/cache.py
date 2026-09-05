@@ -20,7 +20,7 @@ from .providers import MarketDataProvider
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CachedDataProvider", "write_cache", "CACHE_FILENAME"]
+__all__ = ["CACHE_FILENAME", "CachedDataProvider", "write_cache"]
 
 CACHE_FILENAME = "prices.parquet"
 

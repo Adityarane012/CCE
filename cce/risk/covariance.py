@@ -26,8 +26,12 @@ from .volatility import TRADING_DAYS
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "CovarianceReport", "historical_covariance", "prepare_covariance",
-    "is_psd", "condition_number", "correlation_from_covariance",
+    "CovarianceReport",
+    "condition_number",
+    "correlation_from_covariance",
+    "historical_covariance",
+    "is_psd",
+    "prepare_covariance",
 ]
 
 EIGENVALUE_FLOOR = 1e-10

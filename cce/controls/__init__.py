@@ -13,21 +13,36 @@ from __future__ import annotations
 
 from .circuit_breaker import BreakerOutcome, evaluate_breaker
 from .policy import (
-    MATERIAL_CHANGE, PolicyChangePreview, ThresholdChange, diff_policies,
+    MATERIAL_CHANGE,
+    PolicyChangePreview,
+    ThresholdChange,
+    diff_policies,
     is_weakening,
 )
 from .recovery import generate_recovery_candidates
 from .state_machine import (
-    CONTROL_CATEGORY, PORTFOLIO_METRIC, ClassificationResult, aggregate_state,
+    CONTROL_CATEGORY,
+    PORTFOLIO_METRIC,
+    ClassificationResult,
+    aggregate_state,
     classify,
 )
 from .validation import validate, validate_weights
 
 __all__ = [
-    "classify", "aggregate_state", "ClassificationResult",
-    "CONTROL_CATEGORY", "PORTFOLIO_METRIC",
-    "validate", "validate_weights",
-    "diff_policies", "is_weakening", "PolicyChangePreview",
-    "ThresholdChange", "MATERIAL_CHANGE",
-    "BreakerOutcome", "evaluate_breaker", "generate_recovery_candidates",
+    "CONTROL_CATEGORY",
+    "MATERIAL_CHANGE",
+    "PORTFOLIO_METRIC",
+    "BreakerOutcome",
+    "ClassificationResult",
+    "PolicyChangePreview",
+    "ThresholdChange",
+    "aggregate_state",
+    "classify",
+    "diff_policies",
+    "evaluate_breaker",
+    "generate_recovery_candidates",
+    "is_weakening",
+    "validate",
+    "validate_weights",
 ]

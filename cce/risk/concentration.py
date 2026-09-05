@@ -18,8 +18,12 @@ from __future__ import annotations
 from ..contracts import Universe
 
 __all__ = [
-    "max_asset_weight", "max_sector_weight", "max_asset_class_weight",
-    "herfindahl_index", "effective_number_of_assets", "concentration_summary",
+    "concentration_summary",
+    "effective_number_of_assets",
+    "herfindahl_index",
+    "max_asset_class_weight",
+    "max_asset_weight",
+    "max_sector_weight",
 ]
 
 

@@ -11,13 +11,24 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import numpy as np
 import pytest
 
 from cce.contracts import (
-    Candidate, CandidateRole, Comparator, ControlResult, ControlStatus,
-    ExpectedReturnMethod, HumanAction, HumanActionRecord, OptimizationResult,
-    RiskState, Scope, SolverStatus, Strategy, StressStatus, Threshold,
+    Candidate,
+    CandidateRole,
+    Comparator,
+    ControlResult,
+    ControlStatus,
+    ExpectedReturnMethod,
+    HumanAction,
+    HumanActionRecord,
+    OptimizationResult,
+    RiskState,
+    Scope,
+    SolverStatus,
+    Strategy,
+    StressStatus,
+    Threshold,
     VaRMethod,
 )
 from cce.contracts.risk import Breach, RiskSnapshot

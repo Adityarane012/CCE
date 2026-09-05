@@ -39,8 +39,12 @@ import pandas as pd
 from .volatility import TRADING_DAYS, annualisation_factor
 
 __all__ = [
-    "DEFAULT_LAMBDA", "DEFAULT_SEED_WINDOW", "ewma_step",
-    "ewma_variance_series", "ewma_volatility", "ewma_covariance",
+    "DEFAULT_LAMBDA",
+    "DEFAULT_SEED_WINDOW",
+    "ewma_covariance",
+    "ewma_step",
+    "ewma_variance_series",
+    "ewma_volatility",
 ]
 
 

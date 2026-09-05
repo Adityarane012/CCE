@@ -19,7 +19,11 @@ import pandas as pd
 from .enums import DataProvider, RiskState, ValidationStatus
 
 __all__ = [
-    "Asset", "Universe", "MarketData", "ValidationFinding", "ValidationReport",
+    "Asset",
+    "MarketData",
+    "Universe",
+    "ValidationFinding",
+    "ValidationReport",
 ]
 
 

@@ -26,9 +26,11 @@ from ..contracts import Universe
 from .volatility import portfolio_volatility
 
 __all__ = [
-    "marginal_contributions", "risk_contributions",
-    "percentage_risk_contributions", "sector_risk_contributions",
+    "marginal_contributions",
+    "percentage_risk_contributions",
     "risk_contribution_table",
+    "risk_contributions",
+    "sector_risk_contributions",
 ]
 
 

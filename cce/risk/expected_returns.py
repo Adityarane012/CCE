@@ -24,7 +24,7 @@ from ..contracts import ExpectedReturnMethod
 from .ewma import DEFAULT_LAMBDA
 from .volatility import TRADING_DAYS
 
-__all__ = ["historical_mean", "ewma_mean", "expected_returns"]
+__all__ = ["ewma_mean", "expected_returns", "historical_mean"]
 
 
 def historical_mean(

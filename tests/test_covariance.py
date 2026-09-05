@@ -14,8 +14,13 @@ import pytest
 
 from cce.exceptions import CovarianceError
 from cce.risk import (
-    condition_number, correlation_from_covariance, estimate_covariance,
-    ewma_covariance, historical_covariance, is_psd, prepare_covariance,
+    condition_number,
+    correlation_from_covariance,
+    estimate_covariance,
+    ewma_covariance,
+    historical_covariance,
+    is_psd,
+    prepare_covariance,
 )
 from tests.fixtures import synthetic
 
@@ -177,9 +182,10 @@ class TestCorrelation:
 
 def test_committed_cache_produces_a_valid_covariance() -> None:
     from datetime import date
+
     from cce.config import load_universe
     from cce.contracts import DataProvider
-    from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
+    from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 
     u = load_universe()
     p = CachedDataProvider(DEFAULT_CACHE_DIR).fetch_prices(

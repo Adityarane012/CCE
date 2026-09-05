@@ -21,16 +21,33 @@ import pandas as pd
 import pytest
 
 from cce.contracts import DataProvider, ExpectedReturnMethod
-from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
+from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 from cce.risk import (
-    TRADING_DAYS, annualisation_factor, concentration_summary,
-    current_drawdown, cvar_with_diagnostics, days_to_liquidate,
-    effective_number_of_assets, equity_curve, ewma_mean, ewma_volatility,
-    expected_returns, herfindahl_index, historical_cvar, historical_mean,
-    historical_var, historical_volatility, liquidity_summary,
-    marginal_contributions, max_drawdown, max_sector_weight, monte_carlo_var,
-    parametric_var, percentage_risk_contributions, portfolio_volatility,
-    risk_contributions, sharpe_ratio,
+    annualisation_factor,
+    concentration_summary,
+    current_drawdown,
+    cvar_with_diagnostics,
+    days_to_liquidate,
+    effective_number_of_assets,
+    equity_curve,
+    ewma_mean,
+    ewma_volatility,
+    expected_returns,
+    herfindahl_index,
+    historical_cvar,
+    historical_mean,
+    historical_var,
+    historical_volatility,
+    liquidity_summary,
+    marginal_contributions,
+    max_drawdown,
+    max_sector_weight,
+    monte_carlo_var,
+    parametric_var,
+    percentage_risk_contributions,
+    portfolio_volatility,
+    risk_contributions,
+    sharpe_ratio,
 )
 from cce.risk.ewma import ewma_step
 from tests.fixtures import synthetic

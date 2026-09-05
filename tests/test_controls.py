@@ -20,19 +20,28 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from cce.contracts import (
-    BreakerCategory, Comparator, ControlStatus, DataProvider,
-    ExpectedReturnMethod, OptimizationResult, RiskState, Scope, SolverStatus,
-    Strategy, Threshold,
+    BreakerCategory,
+    Comparator,
+    ControlStatus,
+    DataProvider,
+    ExpectedReturnMethod,
+    OptimizationResult,
+    RiskState,
+    Scope,
+    SolverStatus,
+    Strategy,
+    Threshold,
 )
 from cce.controls import (
-    aggregate_state, classify, diff_policies, is_weakening, validate,
+    aggregate_state,
+    diff_policies,
+    is_weakening,
+    validate,
 )
-from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
-from cce.risk import RiskInputs, compute_risk_snapshot
+from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 
 ROOT = Path(__file__).resolve().parent.parent
 AS_OF = date(2026, 8, 31)

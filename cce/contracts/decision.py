@@ -9,20 +9,29 @@ any decision, metric or state (INV-1).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from .control import Candidate
 from .enums import (
-    Actor, BreakerCategory, CandidateRole, ControlStatus, HumanAction,
-    Strategy, TriggerType,
+    Actor,
+    BreakerCategory,
+    CandidateRole,
+    ControlStatus,
+    HumanAction,
+    Strategy,
+    TriggerType,
 )
 from .portfolio import PortfolioState
 from .risk import RiskChange, RiskSnapshot
 
 __all__ = [
-    "Explanation", "NarratedExplanation", "HumanActionRecord",
-    "DecisionEvent", "SafeAllocation", "DecisionRecord",
+    "DecisionEvent",
+    "DecisionRecord",
+    "Explanation",
+    "HumanActionRecord",
+    "NarratedExplanation",
+    "SafeAllocation",
 ]
 
 

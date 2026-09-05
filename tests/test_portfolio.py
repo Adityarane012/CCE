@@ -10,17 +10,25 @@ from __future__ import annotations
 
 from datetime import date
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from cce.contracts import PAISE_PER_CRORE, DataProvider
-from cce.data import CachedDataProvider, DEFAULT_CACHE_DIR, build_market_data
+from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 from cce.portfolio import (
-    DEFAULT_CAPITAL_PAISE, allocate_paise, asset_class_exposure,
-    build_portfolio_state, liquid_share, normalise_weights, portfolio_returns,
-    rebalance_to, sector_exposure, transaction_cost_paise, turnover,
-    value_to_units, weight_deltas,
+    DEFAULT_CAPITAL_PAISE,
+    allocate_paise,
+    asset_class_exposure,
+    build_portfolio_state,
+    liquid_share,
+    normalise_weights,
+    portfolio_returns,
+    rebalance_to,
+    sector_exposure,
+    transaction_cost_paise,
+    turnover,
+    value_to_units,
+    weight_deltas,
 )
 
 AS_OF = date(2026, 8, 31)

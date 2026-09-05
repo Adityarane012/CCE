@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from .enums import Comparator, RiskState, Scope
 from .optimization import Constraints
 
-__all__ = ["Threshold", "ModelParams", "Policy", "BAND_TOLERANCE"]
+__all__ = ["BAND_TOLERANCE", "ModelParams", "Policy", "Threshold"]
 
 # Absorbs floating-point representation error at a band edge. A solver that
 # satisfies `x <= 0.25` exactly may return 0.2500000001; that must not flip a

@@ -28,21 +28,33 @@ import cvxpy as cp
 import numpy as np
 
 from ..contracts import (
-    Constraints, OptimizationResult, SolverStatus, Strategy,
+    Constraints,
+    OptimizationResult,
+    SolverStatus,
+    Strategy,
 )
 from ..risk import portfolio_volatility
 from .base import (
-    SOLVER_STATUS_MAP, Optimizer, OptimizerInputs, failed_result,
+    SOLVER_STATUS_MAP,
+    Optimizer,
+    OptimizerInputs,
+    failed_result,
 )
 from .constraints import (
-    build_constraints, describe_infeasibility, transaction_cost_expr,
-    turnover_expr,
+    build_constraints,
+    describe_infeasibility,
+    transaction_cost_expr,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MaxSharpeOptimizer", "FrontierPoint", "efficient_frontier",
-           "solve_min_variance", "solve_unconstrained_max_sharpe"]
+__all__ = [
+    "FrontierPoint",
+    "MaxSharpeOptimizer",
+    "efficient_frontier",
+    "solve_min_variance",
+    "solve_unconstrained_max_sharpe",
+]
 
 
 @dataclass(frozen=True)

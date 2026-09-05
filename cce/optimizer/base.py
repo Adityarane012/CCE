@@ -24,13 +24,17 @@ import numpy as np
 import pandas as pd
 
 from ..contracts import (
-    Constraints, ExpectedReturnMethod, OptimizationResult, SolverStatus,
-    Strategy, Universe,
+    Constraints,
+    ExpectedReturnMethod,
+    OptimizationResult,
+    SolverStatus,
+    Strategy,
+    Universe,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["OptimizerInputs", "Optimizer", "failed_result", "SOLVER_STATUS_MAP"]
+__all__ = ["SOLVER_STATUS_MAP", "Optimizer", "OptimizerInputs", "failed_result"]
 
 # CVXPY problem status -> our SolverStatus. Anything unmapped is an error:
 # an unrecognised status must never be optimistically treated as success.

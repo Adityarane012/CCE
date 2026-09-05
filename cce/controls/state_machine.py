@@ -23,11 +23,18 @@ Two things that are easy to get wrong and are therefore explicit here:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..contracts import (
-    Breach, BreakerCategory, Comparator, Policy, RiskSnapshot, RiskState,
-    Scope, Threshold, Universe,
+    Breach,
+    BreakerCategory,
+    Comparator,
+    Policy,
+    RiskSnapshot,
+    RiskState,
+    Scope,
+    Threshold,
+    Universe,
 )
 from ..contracts.policy import BAND_TOLERANCE
 
@@ -39,8 +46,11 @@ logger = logging.getLogger(__name__)
 _TOL = BAND_TOLERANCE
 
 __all__ = [
-    "ClassificationResult", "classify", "aggregate_state",
-    "CONTROL_CATEGORY", "PORTFOLIO_METRIC",
+    "CONTROL_CATEGORY",
+    "PORTFOLIO_METRIC",
+    "ClassificationResult",
+    "aggregate_state",
+    "classify",
 ]
 
 # control_code -> which breaker category a RED breach falls under

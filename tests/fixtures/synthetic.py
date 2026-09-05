@@ -15,7 +15,11 @@ import numpy as np
 import pandas as pd
 
 from cce.contracts import (
-    Asset, PortfolioState, Position, Universe, PAISE_PER_CRORE,
+    PAISE_PER_CRORE,
+    Asset,
+    PortfolioState,
+    Position,
+    Universe,
 )
 
 TRADING_DAYS = 252

@@ -26,10 +26,15 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from ..contracts import (
-    ControlResult, ControlStatus, MarketData, Policy, SafeAllocation, Universe,
+    ControlResult,
+    ControlStatus,
+    MarketData,
+    Policy,
+    SafeAllocation,
+    Universe,
 )
 from ..exceptions import CovarianceError
-from ..portfolio import transaction_cost_paise, turnover
+from ..portfolio import transaction_cost_paise
 from ..risk import RiskInputs, compute_risk_snapshot
 from .state_machine import ClassificationResult, classify
 
@@ -189,7 +194,12 @@ def _model_failure(
     never as a silent exception the caller might swallow.
     """
     from ..contracts import (
-        Breach, BreakerCategory, Comparator, RiskState, Scope, VaRMethod,
+        Breach,
+        BreakerCategory,
+        Comparator,
+        RiskState,
+        Scope,
+        VaRMethod,
     )
     from ..contracts.risk import RiskSnapshot
 
@@ -230,12 +240,22 @@ def validate_weights(
 
     Builds a minimal :class:`MarketData` around a returns frame.
     """
-    from ..contracts import DataProvider, MarketData as MD
+    from ..contracts import DataProvider
+    from ..contracts import MarketData as MD
 
+    from datetime import date
+    
     prices = (1.0 + returns).cumprod() * 100.0
+    
+    if len(returns) > 0:
+        last = returns.index[-1]
+        as_of_date = last if isinstance(last, date) else getattr(last, "date", lambda: date.today())()
+    else:
+        as_of_date = date.today()
+
     md = MD(
         prices=prices, returns=returns,
-        as_of_date=(returns.index[-1] if len(returns) else None),
+        as_of_date=as_of_date,
         provider=DataProvider.CACHED, universe_hash="", data_hash="",
     )
     return validate(

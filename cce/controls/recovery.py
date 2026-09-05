@@ -8,7 +8,12 @@ from __future__ import annotations
 import logging
 
 from ..contracts import (
-    Candidate, CandidateRole, MarketData, OptimizationResult, Policy, Universe,
+    Candidate,
+    CandidateRole,
+    MarketData,
+    OptimizationResult,
+    Policy,
+    Universe,
 )
 from .validation import validate
 

@@ -14,9 +14,15 @@ import pandas as pd
 from ..contracts import PAISE_PER_RUPEE, Universe
 
 __all__ = [
-    "portfolio_returns", "turnover", "weight_deltas", "transaction_cost_paise",
-    "sector_exposure", "asset_class_exposure", "liquid_share",
-    "allocate_paise", "value_to_units",
+    "allocate_paise",
+    "asset_class_exposure",
+    "liquid_share",
+    "portfolio_returns",
+    "sector_exposure",
+    "transaction_cost_paise",
+    "turnover",
+    "value_to_units",
+    "weight_deltas",
 ]
 
 

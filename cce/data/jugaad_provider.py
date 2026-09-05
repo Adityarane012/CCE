@@ -24,7 +24,7 @@ from .providers import MarketDataProvider, align_calendar, to_trading_date
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["JugaadDataProvider", "InstrumentUnavailable"]
+__all__ = ["InstrumentUnavailable", "JugaadDataProvider"]
 
 
 class InstrumentUnavailable(DataIntegrityError):
