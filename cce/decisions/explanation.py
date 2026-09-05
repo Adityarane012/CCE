@@ -1,33 +1,86 @@
-from collections.abc import Iterable
+"""Construction of the structured Explanation (FR-140).
 
-from cce.contracts.decision import Explanation
-from cce.contracts.enums import ControlStatus, Strategy
-from cce.contracts.risk import RiskChange
+The :class:`~cce.contracts.decision.Explanation` is the SOURCE OF TRUTH for
+all narrative output (FR-141). Nothing downstream — neither the deterministic
+narrator nor the LLM — may state a fact this object does not contain.
+
+It is built from values the engines already computed. This module derives no
+metric of its own; it is a constructor, not a calculation.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+
+from cce.contracts import ControlStatus, Explanation, RiskChange, Strategy
+
+__all__ = ["build_explanation"]
+
+
+def _clean(text: str | None) -> str | None:
+    """Normalise an optional field.
+
+    A field that does not apply is ``None``, never an empty or whitespace
+    string (FR-140). An empty string renders as a blank line in the UI and
+    reads as "we had nothing to say" rather than "this does not apply".
+    """
+    if text is None:
+        return None
+    stripped = text.strip()
+    return stripped or None
 
 
 def build_explanation(
-    trigger_desc: str,
+    trigger: str,
     risk_change: RiskChange | None,
     main_contributors: Iterable[RiskChange],
     optimizer: Strategy | None,
-    candidate_summary: dict[str, float],
+    candidate_summary: Mapping[str, float],
     control_status: ControlStatus,
     reasons: Iterable[str],
     stress_summary: Iterable[str],
     action: str,
-    expected_improvement: str | None = None
+    expected_improvement: str | None = None,
 ) -> Explanation:
-    """Builds a structured Explanation object deterministically."""
-    
+    """Assemble the structured Explanation. Deterministic.
+
+    Args:
+        trigger: What started this decision cycle. Required, non-empty.
+        risk_change: The headline metric movement, or ``None`` if this cycle
+            was not triggered by one.
+        main_contributors: Per-scope movements behind ``risk_change``.
+        optimizer: The strategy that produced the proposal, or ``None`` if the
+            optimizer did not run.
+        candidate_summary: ``{asset_id: weight}`` for the proposed allocation.
+        control_status: The independent control engine's verdict.
+        reasons: Specific rejection or acceptance reasons, each carrying the
+            observed value and the threshold (FR-174). Never generic.
+        stress_summary: One line per scenario.
+        action: What the system did as a result.
+        expected_improvement: What the safe alternative buys, if applicable.
+
+    Raises:
+        ValueError: If ``trigger`` or ``action`` is empty. Those two fields
+            always apply; a blank one means the caller lost information.
+    """
+    trigger_text = _clean(trigger)
+    action_text = _clean(action)
+    if trigger_text is None:
+        raise ValueError("trigger is required and must not be empty (FR-140)")
+    if action_text is None:
+        raise ValueError("action is required and must not be empty (FR-140)")
+
     return Explanation(
-        trigger=trigger_desc,
+        trigger=trigger_text,
         risk_change=risk_change,
         main_contributors=tuple(main_contributors),
         optimizer=optimizer,
         candidate_summary=dict(candidate_summary),
-        control_result=control_status.name,
-        reasons=tuple(reasons),
-        stress_summary=tuple(stress_summary),
-        action=action,
-        expected_improvement=expected_improvement
+        control_result=control_status.value,
+        reasons=tuple(r for r in (_clean(x) for x in reasons) if r is not None),
+        stress_summary=tuple(
+            s for s in (_clean(x) for x in stress_summary) if s is not None
+        ),
+        action=action_text,
+        expected_improvement=_clean(expected_improvement),
     )
