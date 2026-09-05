@@ -40,6 +40,11 @@ FORBIDDEN: dict[str, list[str]] = {
     "cce/data": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
     "cce/audit": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
     "cce/decisions": ["cce.services", "cce.optimizer", "cce.controls", "ui"],
+    # L4 orchestrates every engine and the repository, so it may import
+    # anything below it. It may never import the UI: the dependency runs
+    # one way, and a service reaching into a page is how presentation
+    # logic ends up deciding things (INV-12).
+    "cce/services": ["ui"],
 }
 
 

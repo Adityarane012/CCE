@@ -32,12 +32,16 @@ from .models import (
 from .serialization import breaches_from_json, loads_or_none, policy_from_json
 
 __all__ = [
+    "get_candidate_id",
     "get_current_policy",
     "get_decision",
     "get_last_safe_allocation",
+    "get_latest_portfolio_state",
+    "get_latest_risk_snapshot_id",
     "get_policy_version",
     "get_replay_timeline",
     "list_decisions",
+    "next_event_sequence",
 ]
 
 
@@ -362,3 +366,87 @@ def get_decision(conn: sqlite3.Connection, decision_id: int) -> StoredDecision:
         llm_text=expl["llm_text"] if expl else None,
         structured_explanation=loads_or_none(expl["structured_json"]) if expl else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# lookups the service layer needs
+#
+# These exist so no module outside cce/audit/ writes SQL. The service layer
+# genuinely needs these ids to wire a decision together; giving it a
+# connection instead would put a second writer behind the repository's back,
+# and an append-only guarantee the repository cannot see is not a guarantee.
+# ---------------------------------------------------------------------------
+
+def get_latest_portfolio_state(
+    conn: sqlite3.Connection, portfolio_id: str
+) -> tuple[int, dict[str, float], int] | None:
+    """``(portfolio_state_id, weights, total_value_paise)`` or ``None``.
+
+    Weights only. The stored ``positions_json`` was priced when it was
+    written, and presenting those values as today's book would misstate it —
+    the allocation persists, the valuation does not.
+    """
+    row = conn.execute(
+        """
+        SELECT portfolio_state_id, weights_json, total_value_paise
+          FROM portfolio_states
+         WHERE portfolio_id = ?
+         ORDER BY created_at DESC, portfolio_state_id DESC
+         LIMIT 1
+        """,
+        (portfolio_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return (
+        int(row["portfolio_state_id"]),
+        _weights(row["weights_json"]),
+        int(row["total_value_paise"]),
+    )
+
+
+def get_latest_risk_snapshot_id(conn: sqlite3.Connection) -> int | None:
+    row = conn.execute(
+        "SELECT risk_snapshot_id FROM risk_snapshots "
+        "ORDER BY risk_snapshot_id DESC LIMIT 1"
+    ).fetchone()
+    return int(row["risk_snapshot_id"]) if row else None
+
+
+def get_current_policy_version_id(conn: sqlite3.Connection) -> int:
+    """The id of the newest policy version.
+
+    Read rather than taken from ``Policy.version``: the audit column is a
+    foreign key into ``policy_versions``, and the two are the same number
+    only by convention.
+    """
+    row = conn.execute(
+        "SELECT policy_version_id FROM policy_versions "
+        "ORDER BY policy_version_id DESC LIMIT 1"
+    ).fetchone()
+    if row is None:
+        raise LookupError("no policy version; run migrations before use")
+    return int(row["policy_version_id"])
+
+
+def get_candidate_id(
+    conn: sqlite3.Connection, decision_id: int, role: str
+) -> int | None:
+    """The persisted candidate for a decision and role, if any."""
+    row = conn.execute(
+        "SELECT candidate_id FROM candidate_allocations "
+        "WHERE decision_id = ? AND candidate_role = ? "
+        "ORDER BY candidate_id DESC LIMIT 1",
+        (decision_id, role),
+    ).fetchone()
+    return int(row["candidate_id"]) if row else None
+
+
+def next_event_sequence(conn: sqlite3.Connection, decision_id: int) -> int:
+    """The next free ``sequence_no`` for this decision's timeline."""
+    row = conn.execute(
+        "SELECT COALESCE(MAX(sequence_no), 0) AS s FROM decision_events "
+        "WHERE decision_id = ?",
+        (decision_id,),
+    ).fetchone()
+    return int(row["s"]) + 1

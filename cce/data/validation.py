@@ -30,7 +30,8 @@ from .providers import panel_hash, universe_hash
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ValidationThresholds", "build_market_data", "validate_panel"]
+__all__ = [
+    "panel_metrics","ValidationThresholds", "build_market_data", "validate_panel"]
 
 # [DEMO-CONFIG] mirrors config/policy.yaml DATA_* thresholds.
 MAX_STALE_TRADING_DAYS_GREEN = 1
@@ -66,6 +67,44 @@ def _worst(findings: list[ValidationFinding]) -> RiskState:
         return RiskState.GREEN
     return max((f.severity for f in findings), key=lambda s: s.severity)
 
+
+
+def panel_metrics(
+    prices: pd.DataFrame, as_of: date | None = None
+) -> tuple[float | None, float | None]:
+    """Measure staleness and completeness. No thresholds, no judgement.
+
+    Returns ``(stale_trading_days, completeness)``, either of which is
+    ``None`` when it cannot be measured — never a zero standing in for
+    "unknown" (INV-5).
+
+    Extracted so the service layer can hand these numbers to the control
+    engine. ``validate_panel`` only reports them inside a FINDING, and a
+    finding is only raised when something is wrong; on clean data there was
+    nothing to read, so DATA_FRESHNESS and DATA_COMPLETENESS came out
+    unevaluated and every candidate was NOT_VALIDATED. The gate was stuck
+    shut on healthy data.
+
+    Comparing these against the policy bands stays in ``cce/controls/``
+    (INV-11). This function measures; it does not classify.
+    """
+    if prices.empty:
+        return None, None
+
+    last = prices.index.max()
+    if isinstance(last, datetime):
+        last_date = last.date()
+    elif isinstance(last, date):
+        last_date = last
+    else:
+        last_date = pd.Timestamp(last).date()
+    stale = float(np.busday_count(last_date, as_of or market_today()))
+
+    total = prices.size
+    completeness = (
+        float(1.0 - int(prices.isna().sum().sum()) / total) if total else None
+    )
+    return stale, completeness
 
 def validate_panel(
     prices: pd.DataFrame,

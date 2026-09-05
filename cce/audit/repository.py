@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import datetime
 
 from cce.clock import utc_now
@@ -801,3 +802,69 @@ class AuditRepository:
     def get_policy_version(self, policy_version_id: int) -> Policy:
         """The policy in force for a given version id (INV-8)."""
         return queries.get_policy_version(self.conn, policy_version_id)
+
+    # ------------------------------------------------------------------
+    # composition
+    # ------------------------------------------------------------------
+
+    @contextmanager
+    def atomic(self) -> Iterator[AuditRepository]:
+        """Run several writes as ONE all-or-nothing unit.
+
+        The service layer needs this: INV-6 requires a state change and its
+        audit record to commit together, and EC-7.3 requires a failure
+        mid-approval to leave the portfolio untouched. Exposed here so no
+        caller outside ``cce/audit/`` ever holds the connection — a second
+        writer behind the repository's back is an append-only guarantee the
+        repository cannot enforce.
+        """
+        with transaction(self.conn):
+            yield self
+
+    # ------------------------------------------------------------------
+    # lookups for the service layer
+    # ------------------------------------------------------------------
+
+    def get_latest_portfolio_state(
+        self, portfolio_id: str
+    ) -> tuple[int, dict[str, float], int] | None:
+        """``(portfolio_state_id, weights, total_value_paise)`` or ``None``."""
+        return queries.get_latest_portfolio_state(self.conn, portfolio_id)
+
+    def get_latest_risk_snapshot_id(self) -> int | None:
+        return queries.get_latest_risk_snapshot_id(self.conn)
+
+    def get_current_policy_version_id(self) -> int:
+        """The id of the policy version in force (INV-8)."""
+        return queries.get_current_policy_version_id(self.conn)
+
+    def get_candidate_id(self, decision_id: int, role: str) -> int | None:
+        return queries.get_candidate_id(self.conn, decision_id, role)
+
+    def next_event_sequence(self, decision_id: int) -> int:
+        return queries.next_event_sequence(self.conn, decision_id)
+
+    def attach_recommendation(self, decision_id: int, candidate_id: int) -> None:
+        """Name the recommended candidate on a decision just opened.
+
+        This completes the insert rather than amending a settled record: the
+        candidate ids do not exist until the candidates are written, and the
+        candidates cannot be written until the decision they reference
+        exists. Guarded with ``IS NULL`` so it fires exactly once, for the
+        same reason the close transition is (INV-6), and it is expected to run
+        inside the transaction that opened the decision.
+        """
+        try:
+            with transaction(self.conn):
+                cur = self.conn.execute(
+                    "UPDATE decision_records SET recommended_candidate_id = ? "
+                    "WHERE decision_id = ? AND recommended_candidate_id IS NULL",
+                    (candidate_id, decision_id),
+                )
+                if cur.rowcount != 1:
+                    raise AuditWriteError(
+                        f"decision {decision_id} already names a recommended "
+                        "candidate; it is not amendable"
+                    )
+        except sqlite3.Error as e:
+            raise AuditWriteError(f"failed to attach recommendation: {e}") from e

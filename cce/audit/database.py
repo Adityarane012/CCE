@@ -65,19 +65,48 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+#: Nesting depth per connection. A repository method opens a transaction of
+#: its own, but the service layer must compose several of those into ONE
+#: all-or-nothing unit — INV-6 requires a state change and its audit record to
+#: commit together, and EC-7.3 requires a failure mid-approval to leave the
+#: portfolio unchanged. Without re-entrancy the inner ``BEGIN`` raises
+#: "cannot start a transaction within a transaction".
+_DEPTH: dict[int, int] = {}
+
+
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    """Run a block inside one all-or-nothing transaction.
+    """Run a block inside one all-or-nothing transaction. Re-entrant.
 
     ``BEGIN IMMEDIATE`` takes the write lock up front so two concurrent
     writers fail fast rather than one discovering the conflict at COMMIT.
+
+    Nested uses JOIN the outermost transaction rather than starting their
+    own, and only the outermost commits. That is deliberate rather than
+    convenient: SAVEPOINTs would let an inner block roll back while the outer
+    one commits, which is exactly the partial write — a portfolio updated
+    without its audit record — that must never happen.
     """
+    key = id(conn)
+    depth = _DEPTH.get(key, 0)
+
+    if depth:                       # already inside one; join it
+        _DEPTH[key] = depth + 1
+        try:
+            yield conn
+        finally:
+            _DEPTH[key] = depth
+        return
+
     conn.execute("BEGIN IMMEDIATE;")
+    _DEPTH[key] = 1
     try:
         yield conn
     except BaseException:
+        _DEPTH[key] = 0
         conn.execute("ROLLBACK;")
         raise
+    _DEPTH[key] = 0
     conn.execute("COMMIT;")
 
 

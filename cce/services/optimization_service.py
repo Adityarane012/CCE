@@ -1,0 +1,552 @@
+"""Proposal, independent validation and stress testing as one unit.
+
+Spec: docs/06-DATA-CONTRACTS.md section 9, docs/04-WORKFLOW.md.
+
+**There is no public path here that optimizes without validating.** That is
+the whole point of the method boundary: the UI cannot skip the control engine
+because no callable exists that would let it. ``_optimize`` is private and
+returns an ``OptimizationResult`` that never leaves this module unvalidated.
+
+This module is also where the engines meet persistence. Phases 5-7 built them
+as pure functions that construct ``Alert`` and ``DecisionEvent`` objects and
+write nothing; :meth:`OptimizationService.run_cycle` is what actually records
+them. If a control or stress module ever needs to import ``cce.audit``, the
+work belongs here instead.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from dataclasses import dataclass, replace
+
+from cce.audit import (
+    EVENT_BREAKER_TRIPPED,
+    EVENT_CANDIDATE_PROPOSED,
+    EVENT_CONTROL_REJECTED,
+    EVENT_CONTROL_VALIDATED,
+    EVENT_RECOVERY_GENERATED,
+    EVENT_RISK_COMPUTED,
+    EVENT_SAFE_ALLOCATION_RETAINED,
+    EVENT_STRESS_COMPLETED,
+    EVENT_TRIGGER_RECEIVED,
+    DecisionContext,
+    make_event,
+)
+from cce.clock import utc_now
+from cce.contracts import (
+    Candidate,
+    CandidateRole,
+    Constraints,
+    ControlStatus,
+    ExpectedReturnMethod,
+    OptimizationResult,
+    PortfolioState,
+    SolverStatus,
+    Strategy,
+    TriggerType,
+)
+from cce.controls import evaluate_breaker, generate_recovery_candidates, validate
+from cce.optimizer import (
+    MaxSharpeOptimizer,
+    OptimizerInputs,
+    failed_result,
+    solve_min_variance,
+)
+from cce.risk import estimate_covariance, expected_returns
+
+from .context import ServiceContext
+from .stress_service import StressService
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["DecisionCycle", "OptimizationService"]
+
+
+@dataclass(frozen=True)
+class DecisionCycle:
+    """One persisted decision cycle: what was proposed and what was decided."""
+
+    decision_id: int
+    candidates: tuple[Candidate, ...]
+    candidate_ids: dict[str, int]          # CandidateRole.value -> candidate_id
+    breaker_tripped: bool
+    recommended_role: CandidateRole | None
+
+    def candidate(self, role: CandidateRole) -> Candidate | None:
+        for c in self.candidates:
+            if c.role is role:
+                return c
+        return None
+
+
+class OptimizationService:
+    """Proposes allocations and has them independently judged."""
+
+    def __init__(self, ctx: ServiceContext, stress: StressService | None = None) -> None:
+        self._ctx = ctx
+        self._stress = stress or StressService(ctx)
+
+    # ------------------------------------------------------------------
+    # the one unit of work
+    # ------------------------------------------------------------------
+
+    def propose(
+        self,
+        state: PortfolioState,
+        strategy: Strategy = Strategy.MAX_SHARPE,
+        er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
+        overrides: Constraints | None = None,
+        role: CandidateRole = CandidateRole.SAFE_CONSTRAINED,
+    ) -> Candidate:
+        """Optimize, then independently validate, then stress test.
+
+        One unit of work, always in that order. The validation step does NOT
+        receive the ``OptimizationResult`` — it is handed the weight vector
+        and re-derives every metric from raw returns, so an optimizer that
+        reports an optimistic CVaR cannot talk its way through the gate
+        (FR-072, INV-2).
+        """
+        opt = self._optimize(strategy, er_method, overrides, state)
+        return self._judge(opt, state, role)
+
+    def propose_from_weights(
+        self,
+        weights: dict[str, float],
+        state: PortfolioState,
+        role: CandidateRole = CandidateRole.SAFE_CONSTRAINED,
+    ) -> Candidate:
+        """Judge an EXISTING allocation against current data.
+
+        Same validate-then-stress unit as :meth:`propose`, without the
+        optimizer: used to re-check a candidate before approving it, since
+        the verdict attached to it was reached against whatever panel was
+        current when it was proposed (EC-7.1).
+
+        The synthesised ``OptimizationResult`` carries no advisory metrics.
+        They would be the earlier proposal's numbers, and nothing here
+        recomputes them — the control engine derives its own, which is the
+        only opinion that matters (FR-072).
+        """
+        opt = OptimizationResult(
+            strategy=Strategy.MAX_SHARPE,
+            expected_return_method=ExpectedReturnMethod.HISTORICAL,
+            solver_status=SolverStatus.OPTIMAL,
+            weights=dict(weights),
+        )
+        return self._judge(opt, state, role)
+
+    def propose_safe_and_optimal(
+        self,
+        state: PortfolioState,
+        strategy: Strategy = Strategy.MAX_SHARPE,
+        er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
+    ) -> tuple[Candidate, Candidate]:
+        """``(optimal_unconstrained, safe_constrained)`` for the Safe vs Optimal view.
+
+        Both are judged. The unconstrained optimum is expected to fail, and it
+        is returned anyway — showing the allocation that was rejected, beside
+        the one that was not, is the product's central claim. It is never
+        silently replaced by the safe one (INV-9).
+        """
+        unconstrained = self._judge(
+            self._optimize_unconstrained(er_method, state),
+            state, CandidateRole.OPTIMAL_UNCONSTRAINED,
+        )
+        safe = self.propose(state, strategy, er_method,
+                            role=CandidateRole.SAFE_CONSTRAINED)
+        return unconstrained, safe
+
+    def generate_recovery_candidates(
+        self, state: PortfolioState, er_method: ExpectedReturnMethod =
+        ExpectedReturnMethod.HISTORICAL,
+    ) -> tuple[Candidate, ...]:
+        """Up to three defensive alternatives, each independently validated.
+
+        The optimizers run HERE and their results are handed to
+        ``cce.controls``, so the control package never imports the optimizer
+        (INV-2). A recovery that fails validation is still returned, with its
+        reasons — never dropped, never marked approvable (EC-5.1).
+        """
+        inputs = self._inputs(er_method, state)
+        optimizations: dict[CandidateRole, OptimizationResult] = {}
+
+        optimizations[CandidateRole.RECOVERY_MAX_SHARPE] = MaxSharpeOptimizer().solve(
+            inputs
+        )
+        optimizations[CandidateRole.RECOVERY_MIN_RISK] = self._min_variance(
+            inputs, er_method
+        )
+        defensive = replace(
+            inputs,
+            constraints=replace(
+                inputs.constraints,
+                max_turnover=min(inputs.constraints.max_turnover, 0.10),
+            ),
+        )
+        optimizations[CandidateRole.RECOVERY_DEFENSIVE] = self._min_variance(
+            defensive, er_method
+        )
+
+        candidates = generate_recovery_candidates(
+            optimizations, self._ctx.universe, self._ctx.market_data,
+            state.weights, self._ctx.policy,
+            total_value_paise=state.total_value_paise,
+        )
+        # controls/ cannot run the stress engine either; attach it here.
+        return tuple(self._with_stress(c, state) for c in candidates)
+
+    # ------------------------------------------------------------------
+    # persistence — the engines construct, this records
+    # ------------------------------------------------------------------
+
+    def run_cycle(
+        self,
+        state: PortfolioState,
+        trigger: TriggerType = TriggerType.USER_REQUEST,
+        trigger_detail: str | None = None,
+        strategy: Strategy = Strategy.MAX_SHARPE,
+        er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
+    ) -> DecisionCycle:
+        """Run a full decision cycle and record it.
+
+        Detect -> optimize -> validate -> stress -> breaker -> persist. Every
+        write happens inside ONE transaction: a decision record without its
+        candidates, or a tripped breaker without its alert, is a worse
+        artefact than no record at all (INV-6).
+        """
+        unconstrained, safe = self.propose_safe_and_optimal(state, strategy, er_method)
+        last_safe = self._ctx.repo.get_last_safe_allocation(self._ctx.portfolio_id)
+
+        recovery: tuple[Candidate, ...] = ()
+        if not safe.eligible_for_approval:
+            recovery = self.generate_recovery_candidates(state, er_method)
+
+        outcome = evaluate_breaker(safe, last_safe, recovery_candidates=recovery)
+
+        recommended = self._recommend(safe, recovery)
+        candidates = (unconstrained, safe, *recovery)
+
+        with self._ctx.repo.atomic():
+            decision_id = self._ctx.repo.open_decision(DecisionContext(
+                event_uid=str(uuid.uuid4()),
+                created_at=utc_now(),
+                trigger_type=trigger.value,
+                trigger_detail=trigger_detail,
+                snapshot_id=self._ctx.snapshot_id,
+                policy_version_id=self._ctx.policy_version_id,
+                portfolio_state_before=self._state_id(state),
+                risk_snapshot_before=self._risk_snapshot_id(safe, state),
+                control_status=(
+                    safe.control.status.value if safe.control
+                    else ControlStatus.NOT_VALIDATED.value
+                ),
+                circuit_breaker_active=outcome.tripped,
+                breaker_trigger_category=(
+                    outcome.category.value if outcome.category else None
+                ),
+                optimizer_strategy=strategy.value,
+                expected_return_method=er_method.value,
+                solver_status=safe.optimization.solver_status.value,
+            ))
+
+            candidate_ids: dict[str, int] = {}
+            for cand in candidates:
+                cid = self._ctx.repo.record_candidate(decision_id, cand)
+                candidate_ids[cand.role.value] = cid
+                if cand.control is not None:
+                    self._ctx.repo.record_control_findings(
+                        decision_id, list(cand.control.findings), cid
+                    )
+                if cand.stress:
+                    self._ctx.repo.record_stress_results(
+                        decision_id, list(cand.stress), cid
+                    )
+
+            if outcome.alert is not None:
+                self._ctx.repo.raise_alert(outcome.alert, decision_id)
+
+            for event in self._events(safe, outcome, recovery, trigger_detail):
+                self._ctx.repo.record_event(decision_id, event)
+
+            if recommended is not None:
+                recommended_id = candidate_ids.get(recommended.value)
+                if recommended_id is not None:
+                    self._ctx.repo.attach_recommendation(decision_id, recommended_id)
+
+        return DecisionCycle(
+            decision_id=decision_id,
+            candidates=candidates,
+            candidate_ids=candidate_ids,
+            breaker_tripped=outcome.tripped,
+            recommended_role=recommended,
+        )
+
+    # ------------------------------------------------------------------
+    # internals — deliberately private
+    # ------------------------------------------------------------------
+
+    def _inputs(
+        self, er_method: ExpectedReturnMethod, state: PortfolioState,
+        overrides: Constraints | None = None,
+    ) -> OptimizerInputs:
+        returns = self._ctx.market_data.returns
+        cov, _ = estimate_covariance(returns)
+        mu = expected_returns(
+            returns, er_method,
+            lam=self._ctx.policy.ewma_lambda,
+            trading_days=self._ctx.policy.trading_days_per_year,
+        )
+        return OptimizerInputs(
+            universe=self._ctx.universe,
+            returns=returns,
+            expected_returns=mu,
+            covariance=cov,
+            constraints=overrides or self._ctx.policy.constraints,
+            current_weights=state.weights,
+            risk_free_rate=self._ctx.policy.risk_free_rate,
+            total_value_paise=state.total_value_paise,
+            return_method=er_method,
+        )
+
+    def _optimize(
+        self, strategy: Strategy, er_method: ExpectedReturnMethod,
+        overrides: Constraints | None, state: PortfolioState,
+    ) -> OptimizationResult:
+        inputs = self._inputs(er_method, state, overrides)
+        if strategy is Strategy.MIN_VOLATILITY:
+            return self._min_variance(inputs, er_method)
+        if strategy is not Strategy.MAX_SHARPE:
+            return failed_result(
+                strategy, er_method, SolverStatus.SOLVER_ERROR,
+                f"{strategy.value} is not implemented yet", 0,
+            )
+        return MaxSharpeOptimizer().solve(inputs)
+
+    def _optimize_unconstrained(
+        self, er_method: ExpectedReturnMethod, state: PortfolioState
+    ) -> OptimizationResult:
+        """The optimum with policy limits removed — the 'Optimal' column.
+
+        Only the long-only and fully-invested constraints survive: without
+        them the result is not an allocation at all. Every risk limit is
+        dropped deliberately, because the comparison is the product.
+        """
+        inputs = self._inputs(er_method, state)
+        unconstrained = Constraints(
+            min_weights={a.asset_id: 0.0 for a in self._ctx.universe.assets},
+            max_weights={a.asset_id: 1.0 for a in self._ctx.universe.assets},
+            sector_max={}, asset_class_max={},
+            min_liquid_share=0.0, min_cash_share=0.0, max_turnover=1.0,
+            long_only=True, include_txn_cost=False,
+        )
+        return MaxSharpeOptimizer().solve(replace(inputs, constraints=unconstrained))
+
+    def _min_variance(
+        self, inputs: OptimizerInputs, er_method: ExpectedReturnMethod
+    ) -> OptimizationResult:
+        """Minimum-variance allocation, with its advisory metrics.
+
+        The metrics are assembled here rather than by reaching into the
+        MaxSharpe optimizer's private builder: they are ADVISORY (FR-072) and
+        the control engine recomputes all of them, but a wrong number in an
+        audit record is still a wrong number.
+        """
+        from cce.portfolio import transaction_cost_paise, turnover
+        from cce.risk import cvar_with_diagnostics, historical_var, portfolio_volatility
+
+        vector, status, note = solve_min_variance(inputs)
+        if vector is None:
+            return failed_result(
+                Strategy.MIN_VOLATILITY, er_method, status, note, 0
+            )
+
+        weights = dict(zip(inputs.asset_ids, vector.tolist(), strict=True))
+        vol = portfolio_volatility(vector, inputs.covariance)
+        er = float(inputs.expected_returns @ vector)
+        realised = inputs.returns.to_numpy(dtype=float) @ vector
+        cvar = cvar_with_diagnostics(realised, 0.95)
+
+        return OptimizationResult(
+            strategy=Strategy.MIN_VOLATILITY,
+            expected_return_method=er_method,
+            solver_status=SolverStatus.OPTIMAL,
+            weights=weights,
+            expected_return=er,
+            volatility=vol,
+            sharpe=(er - inputs.risk_free_rate) / vol if vol > 0 else None,
+            var_95=historical_var(realised, 0.95),
+            cvar_95=cvar.value,
+            turnover=turnover(weights, inputs.current_weights),
+            transaction_cost_paise=(
+                transaction_cost_paise(
+                    weights, inputs.current_weights, inputs.universe,
+                    inputs.total_value_paise,
+                )
+                if inputs.total_value_paise > 0 else None
+            ),
+        )
+
+    def _judge(
+        self, opt: OptimizationResult, state: PortfolioState, role: CandidateRole
+    ) -> Candidate:
+        """Stress, then validate independently. Never one without the other.
+
+        Stress runs FIRST, which reads backwards against "optimize ->
+        validate -> stress" but is what that sequence requires:
+        ``STRESS_LOSS_MAX`` is a HARD control, and the control engine cannot
+        evaluate it without the worst measured scenario loss. Validating
+        first left that control unevaluated, which correctly produced
+        NOT_VALIDATED — so every candidate, however healthy, was refused. The
+        gate was stuck shut.
+
+        The two steps are still one indivisible unit; only their internal
+        order differs from the prose.
+        """
+        if not opt.succeeded or opt.weights is None:
+            # A failed solve is still a candidate: the UI must show WHY there
+            # is no proposal rather than an empty panel (INV-4).
+            return Candidate(role=role, optimization=opt, control=None, stress=())
+
+        stress = self._stress.run(
+            opt.weights, total_value_paise=state.total_value_paise
+        )
+        stale_days, completeness = self._data_metrics()
+
+        control = validate(
+            opt.weights, self._ctx.universe, self._ctx.market_data,
+            state.weights, self._ctx.policy,
+            total_value_paise=state.total_value_paise,
+            solver_ok=opt.succeeded,
+            worst_stress_loss=self._stress.worst_loss(stress),
+            data_staleness_days=stale_days,
+            data_completeness=completeness,
+            last_safe_allocation=self._ctx.repo.get_last_safe_allocation(
+                self._ctx.portfolio_id
+            ),
+        )
+        return Candidate(role=role, optimization=opt, control=control, stress=stress)
+
+    def _data_metrics(self) -> tuple[float | None, float | None]:
+        """Staleness and completeness of the panel behind this decision.
+
+        Measured, not classified — the bands live in ``cce/controls/``
+        (INV-11). ``None`` propagates as "not evaluated", which the control
+        engine treats as NOT_VALIDATED rather than as a clean reading.
+        """
+        from cce.data.validation import panel_metrics
+
+        return panel_metrics(
+            self._ctx.market_data.prices, self._ctx.market_data.as_of_date
+        )
+
+    def _with_stress(self, candidate: Candidate, state: PortfolioState) -> Candidate:
+        """Attach stress results to a candidate built elsewhere.
+
+        Used for recovery candidates, which ``cce/controls/`` constructs and
+        validates without being able to run the stress engine itself.
+        """
+        if candidate.optimization.weights is None:
+            return candidate
+        results = self._stress.run(
+            candidate.optimization.weights,
+            total_value_paise=state.total_value_paise,
+        )
+        return replace(candidate, stress=results)
+
+    def _recommend(
+        self, safe: Candidate, recovery: tuple[Candidate, ...]
+    ) -> CandidateRole | None:
+        """The candidate to put in front of the human, or None.
+
+        ``None`` is a real answer: when nothing is approvable the system
+        recommends nothing rather than promoting the least-bad option
+        (Rule 2).
+        """
+        if safe.eligible_for_approval:
+            return safe.role
+        for cand in recovery:
+            if cand.eligible_for_approval:
+                return cand.role
+        return None
+
+    def _events(self, safe, outcome, recovery, trigger_detail):
+        seq = 0
+
+        def nxt(code, summary, **detail):
+            nonlocal seq
+            seq += 1
+            return make_event(seq, code, summary, detail=detail or None)
+
+        events = [nxt(EVENT_TRIGGER_RECEIVED,
+                      trigger_detail or "Decision cycle requested")]
+
+        recomputed = safe.control.recomputed if safe.control else None
+        if recomputed is not None and recomputed.portfolio_volatility is not None:
+            events.append(nxt(
+                EVENT_RISK_COMPUTED,
+                f"Volatility {recomputed.portfolio_volatility:.2%}"
+                + (f", CVaR {recomputed.cvar_95:.2%}"
+                   if recomputed.cvar_95 is not None else ""),
+            ))
+
+        if safe.optimization.weights is not None:
+            events.append(nxt(
+                EVENT_CANDIDATE_PROPOSED,
+                f"{safe.optimization.strategy.value} proposed a constrained allocation",
+            ))
+
+        if safe.control is not None:
+            if safe.control.passed:
+                events.append(nxt(EVENT_CONTROL_VALIDATED,
+                                  "Independent validation passed"))
+            else:
+                reasons = "; ".join(b.message for b in safe.control.hard_breaches)
+                events.append(nxt(
+                    EVENT_CONTROL_REJECTED,
+                    reasons or "Independent validation did not pass",
+                ))
+
+        if safe.stress:
+            events.append(nxt(
+                EVENT_STRESS_COMPLETED,
+                f"Stress suite: {safe.stress_status.value.lower()} "
+                f"across {len(safe.stress)} scenario(s)",
+            ))
+
+        if outcome.tripped:
+            events.append(nxt(
+                EVENT_BREAKER_TRIPPED,
+                f"Circuit breaker tripped on "
+                f"{outcome.category.value if outcome.category else 'UNKNOWN'}",
+            ))
+            events.append(nxt(EVENT_SAFE_ALLOCATION_RETAINED,
+                              "Last Approved Safe Allocation retained"))
+        if recovery:
+            events.append(nxt(
+                EVENT_RECOVERY_GENERATED,
+                f"{len(recovery)} recovery candidate(s) generated",
+            ))
+        return events
+
+    def _state_id(self, state: PortfolioState) -> int:
+        latest = self._ctx.repo.get_latest_portfolio_state(state.portfolio_id)
+        if latest is None:
+            raise LookupError(f"no persisted portfolio state for {state.portfolio_id}")
+        return latest[0]
+
+    def _risk_snapshot_id(self, safe: Candidate, state: PortfolioState) -> int:
+        """Persist the control engine's own recomputed snapshot, and use it.
+
+        The decision references the risk that was actually measured for it,
+        not a snapshot from an earlier cycle.
+        """
+        if safe.control is None:
+            latest = self._ctx.repo.get_latest_risk_snapshot_id()
+            if latest is None:
+                raise LookupError("no risk snapshot recorded")
+            return latest
+        return self._ctx.repo.record_risk_snapshot(
+            safe.control.recomputed, self._state_id(state),
+            self._ctx.snapshot_id, self._ctx.policy_version_id,
+        )
