@@ -1,0 +1,189 @@
+# CCE risk policy
+# Spec: docs/07-RISK-POLICY.md sections 3 and 4.
+#
+# EVERY value here is a [DEMO-CONFIG] prototype setting. They are chosen so a
+# demonstration portfolio moves between GREEN, AMBER and RED under plausible
+# market conditions. They are NOT Basel, SEBI or RBI limits, and NOT calibrated
+# to any institution's risk appetite. Say so in the UI.
+#
+# Comparator semantics (docs/07 section 4):
+#   GT  uses green_max / amber_max   breach when the value EXCEEDS the band
+#   LT  uses green_min / amber_min   breach when it falls BELOW the band
+# A boundary value belongs to the LESS SEVERE band: v == green_max is GREEN.
+#
+# is_hard: true  -> a RED breach TRIPS THE CIRCUIT BREAKER and blocks approval
+# is_hard: false -> a RED breach raises an alert but does not block
+
+version: 1
+label: "INIT26 demo policy"
+
+model:
+  ewma_lambda: 0.94             # RiskMetrics convention for daily data
+  var_confidence: 0.95
+  trading_days_per_year: 252
+  risk_free_rate: 0.065         # displayed as an assumption, never as fact
+  min_return_observations: 250  # below this, metrics are None + degraded
+  monte_carlo_paths: 10000
+  random_seed: 42
+  ewma_seed_window: 60
+
+stress_loss_limit: 0.18         # worst configured scenario loss
+
+thresholds:
+
+  # ---- risk (docs/07 section 3.1, from the master spec) ----
+  - code: RISK_VOL_ANNUAL
+    label: "Annualised volatility"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.12
+    amber_max: 0.15
+    is_hard: true
+
+  - code: RISK_CVAR_95
+    label: "95% Conditional VaR"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.06
+    amber_max: 0.08
+    is_hard: true
+
+  # ---- risk (docs/07 section 3.2, proposed defaults) ----
+  - code: RISK_VAR_95
+    label: "95% Value at Risk"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.03
+    amber_max: 0.04
+    is_hard: false              # CVaR is the authority; VaR is for comparison
+
+  - code: RISK_DRAWDOWN_CURRENT
+    label: "Current drawdown"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.08
+    amber_max: 0.12
+    is_hard: false              # monitoring metric, not a universal rule
+
+  # ---- concentration ----
+  - code: CONC_ASSET_MAX
+    label: "Single-asset concentration"
+    scope: ASSET
+    comparator: GT
+    green_max: 0.30
+    amber_max: 0.40
+    is_hard: true
+
+  - code: CONC_SECTOR_MAX
+    label: "Sector concentration"
+    scope: SECTOR
+    comparator: GT
+    green_max: 0.25
+    amber_max: 0.35
+    is_hard: true
+
+  # ---- risk contribution: catches capital-legal, risk-illegal positions ----
+  - code: RC_ASSET_MAX
+    label: "Asset risk contribution"
+    scope: ASSET
+    comparator: GT
+    green_max: 0.30
+    amber_max: 0.40
+    is_hard: true
+
+  - code: RC_SECTOR_MAX
+    label: "Sector risk contribution"
+    scope: SECTOR
+    comparator: GT
+    green_max: 0.35
+    amber_max: 0.45
+    is_hard: true
+
+  # ---- liquidity ----
+  - code: LIQ_MIN_SHARE
+    label: "Minimum liquid assets"
+    scope: PORTFOLIO
+    comparator: LT
+    green_min: 0.15
+    amber_min: 0.10
+    is_hard: true
+
+  - code: LIQ_MIN_CASH
+    label: "Minimum cash"
+    scope: PORTFOLIO
+    comparator: LT
+    green_min: 0.05
+    amber_min: 0.03
+    is_hard: true
+
+  # ---- transaction ----
+  - code: TXN_TURNOVER_MAX
+    label: "Rebalance turnover"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.20
+    amber_max: 0.25
+    is_hard: true
+
+  - code: TXN_COST_MAX
+    label: "Transaction cost"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.0015
+    amber_max: 0.0030
+    is_hard: false
+
+  # ---- stress: an independent gate, not a report ----
+  - code: STRESS_LOSS_MAX
+    label: "Worst stress-scenario loss"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 0.12
+    amber_max: 0.18
+    is_hard: true
+
+  # ---- data integrity ----
+  - code: DATA_FRESHNESS
+    label: "Data staleness (trading days)"
+    scope: PORTFOLIO
+    comparator: GT
+    green_max: 1
+    amber_max: 3
+    is_hard: true
+
+  - code: DATA_COMPLETENESS
+    label: "Data completeness"
+    scope: PORTFOLIO
+    comparator: LT
+    green_min: 0.98
+    amber_min: 0.95
+    is_hard: true
+
+# MODEL_SOLVER and MODEL_COVARIANCE are hard controls with no numeric band -
+# they are pass/fail status checks evaluated by the control engine in Phase 5,
+# so they are deliberately absent from this list.
+
+constraints:
+  long_only: true
+  min_weight_default: 0.00
+  max_weight_default: 0.30
+  min_liquid_share: 0.15
+  min_cash_share: 0.03
+  max_turnover: 0.25
+  include_txn_cost: true
+  txn_cost_rate_default: 0.0010
+  sector_max:
+    BROAD_EQUITY: 0.35
+    BANKING: 0.35
+    IT: 0.35
+    PHARMA: 0.35
+    FMCG: 0.35
+    GOLD: 0.35
+    GSEC: 0.35
+    CORP_DEBT: 0.35
+    CASH: 0.40
+  asset_class_max:
+    EQUITY: 0.75
+    FIXED_INCOME: 0.60
+    COMMODITY: 0.25
+    CASH: 0.40

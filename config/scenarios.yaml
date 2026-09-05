@@ -1,0 +1,107 @@
+# CCE stress scenarios
+# Spec: docs/07-RISK-POLICY.md section 7, docs/08-FINANCIAL-METHODS.md section 13.
+#
+# Shocks are INSTANTANEOUS RETURNS applied per sector, as decimals.
+# -0.18 means an 18% fall. Positive values are gains.
+#
+# LIQUIDITY is a pseudo-sector: it does not map to an asset. It scales the
+# liquidity metric post-shock, modelling a market where liquid holdings become
+# harder to realise. Assets are unaffected by it directly.
+#
+# All values are [DEMO-CONFIG].
+
+scenarios:
+  - code: BROAD_CRASH
+    label: "Broad market crash"
+    shocks:
+      BROAD_EQUITY: -0.20
+      BANKING: -0.22
+      IT: -0.18
+      PHARMA: -0.12
+      FMCG: -0.12
+      GOLD: 0.06
+      GSEC: -0.02
+      CORP_DEBT: -0.03
+
+  - code: BANKING_CRISIS
+    label: "Banking-sector crisis"
+    shocks:
+      BANKING: -0.25
+      BROAD_EQUITY: -0.10
+      IT: -0.05
+      PHARMA: -0.03
+      FMCG: -0.03
+      GOLD: 0.08
+      GSEC: -0.01
+      CORP_DEBT: -0.04
+      LIQUIDITY: -0.20
+
+  - code: IT_CORRECTION
+    label: "IT-sector correction"
+    shocks:
+      IT: -0.22
+      BROAD_EQUITY: -0.07
+      BANKING: -0.04
+      PHARMA: -0.02
+      FMCG: -0.01
+      GOLD: 0.02
+      GSEC: 0.00
+      CORP_DEBT: 0.00
+
+  - code: RATE_SHOCK
+    label: "Interest-rate shock"
+    shocks:
+      GSEC: -0.08
+      CORP_DEBT: -0.09
+      BANKING: -0.12
+      BROAD_EQUITY: -0.09
+      IT: -0.06
+      PHARMA: -0.05
+      FMCG: -0.05
+      GOLD: -0.03
+
+  - code: LIQUIDITY_SHOCK
+    label: "Liquidity shock"
+    shocks:
+      LIQUIDITY: -0.40
+      BROAD_EQUITY: -0.08
+      BANKING: -0.11
+      IT: -0.06
+      PHARMA: -0.04
+      FMCG: -0.04
+      GSEC: -0.05
+      CORP_DEBT: -0.07
+      GOLD: 0.03
+
+  - code: COMBINED_SEVERE
+    label: "Combined severe"
+    shocks:
+      BROAD_EQUITY: -0.25
+      BANKING: -0.30
+      IT: -0.22
+      PHARMA: -0.15
+      FMCG: -0.15
+      GOLD: 0.05
+      GSEC: -0.06
+      CORP_DEBT: -0.08
+      LIQUIDITY: -0.35
+
+  - code: HISTORICAL_SEVERE
+    label: "Historically-inspired severe event"
+    # Calibrated in Phase 7 against the largest drawdown episode present in the
+    # loaded history. Values below are placeholders until that calibration runs;
+    # the calibration MUST document which episode it used.
+    shocks:
+      BROAD_EQUITY: -0.23
+      BANKING: -0.28
+      IT: -0.20
+      PHARMA: -0.13
+      FMCG: -0.13
+      GOLD: 0.10
+      GSEC: -0.04
+      CORP_DEBT: -0.06
+      LIQUIDITY: -0.30
+
+# The demo scenario in docs/14-DEMO-SCRIPT.md is entered as a CUSTOM shock
+# (Banking -18%, Broad -12%, IT -8%, Gold +5%) and is deliberately MILDER than
+# BANKING_CRISIS: severe enough to trip RED, plausible enough not to look staged.

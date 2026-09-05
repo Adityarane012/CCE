@@ -19,20 +19,23 @@ jugaad-data @ git+https://github.com/jugaad-py/jugaad-data.git@7ae415e5ed5cbbe80
 numpy==2.4.6
 pandas==3.0.5
 
+# ── Phase 0: config, contracts, tests ────────────────────────
+PyYAML==6.0.3
+python-dotenv==1.2.3
+pytest==9.1.1
+
+# ── Phase 4: optimizer (installed early, deliberately) ───────
+# cvxpy pulls compiled solvers and is the one dependency likely to fail
+# on Windows. Installed and smoke-tested during phase 0 rather than at
+# its own phase: discovering a broken solver at hour 8 costs far more
+# than discovering it at hour 1. Verified solving to status "optimal".
+cvxpy==1.9.2
+
 # ── Not yet installed — uncomment as each build phase starts ──
 # Phases per docs/IMPLEMENTATION-PLAN.md §0 "Dependency timeline".
 # Pin each to the version you actually install and verify.
-# pyyaml                 # phase 0  — policy/universe/scenario config
-# pytest                 # phase 0  — testing
-# python-dotenv          # phase 0  — .env loading
 # pyarrow                # phase 1  — parquet cache
 # scipy                  # phase 3  — risk engine, HRP clustering
-# cvxpy                  # phase 4  — optimizer  ** INSTALL EARLY **
 # streamlit              # phase 10 — dashboard
 # plotly                 # phase 10 — charts
 # anthropic              # phase 13 — optional LLM narration
-#
-# cvxpy is the one likely to fail (compiled solvers on Windows).
-# Install and smoke-test it during phase 0 or 1, not at phase 4 —
-# discovering a broken solver at hour 8 is far more expensive than
-# discovering it at hour 1. Smoke test is in the plan, PHASE 4 DEPS.

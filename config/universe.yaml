@@ -1,0 +1,92 @@
+# CCE asset universe
+# Spec: docs/01-PRODUCT-SPECIFICATION.md section 6, docs/07-RISK-POLICY.md
+#
+# Instrument sourcing is resolved in Phase 1. If an instrument has no
+# reproducible historical series, DROP the category and say so in the UI.
+# Eight assets with honest data beats nine with one fabricated
+# (docs/IMPLEMENTATION-PLAN.md PHASE 1).
+#
+# adv_paise: null DISABLES the days-to-liquidate control for that asset
+# rather than inventing a figure (docs/08-FINANCIAL-METHODS.md section 10.2).
+
+defaults:
+  min_weight: 0.00
+  max_weight: 0.30
+  txn_cost_rate: 0.0010      # 10 bps per unit of |weight change|
+  adv_paise: null
+
+assets:
+  - asset_id: NIFTY50
+    ticker: "NIFTY 50"
+    name: "Nifty 50 Index"
+    asset_class: EQUITY
+    sector: BROAD_EQUITY
+    is_liquid: true
+    source: index
+
+  - asset_id: BANKNIFTY
+    ticker: "NIFTY BANK"
+    name: "Nifty Bank Index"
+    asset_class: EQUITY
+    sector: BANKING
+    is_liquid: true
+    source: index
+
+  - asset_id: IT
+    ticker: "NIFTY IT"
+    name: "Nifty IT Index"
+    asset_class: EQUITY
+    sector: IT
+    is_liquid: true
+    source: index
+
+  - asset_id: PHARMA
+    ticker: "NIFTY PHARMA"
+    name: "Nifty Pharma Index"
+    asset_class: EQUITY
+    sector: PHARMA
+    is_liquid: true
+    source: index
+
+  - asset_id: FMCG
+    ticker: "NIFTY FMCG"
+    name: "Nifty FMCG Index"
+    asset_class: EQUITY
+    sector: FMCG
+    is_liquid: true
+    source: index
+
+  - asset_id: GOLD
+    ticker: GOLDBEES
+    name: "Gold ETF (proxy)"
+    asset_class: COMMODITY
+    sector: GOLD
+    is_liquid: true
+    source: stock
+
+  - asset_id: GSEC
+    ticker: GSEC10IETF
+    name: "10Y G-Sec ETF (proxy)"
+    asset_class: FIXED_INCOME
+    sector: GSEC
+    is_liquid: false
+    source: stock
+
+  - asset_id: CORPBOND
+    ticker: BHARATBOND
+    name: "Corporate bond ETF (proxy)"
+    asset_class: FIXED_INCOME
+    sector: CORP_DEBT
+    is_liquid: false
+    source: stock
+
+  - asset_id: CASH
+    ticker: CASH
+    name: "Cash / T-bill proxy"
+    asset_class: CASH
+    sector: CASH
+    is_liquid: true
+    max_weight: 0.40
+    txn_cost_rate: 0.0
+    source: synthetic        # derived from the configured risk-free rate
+    synthetic: true
