@@ -23,6 +23,7 @@ from cce.contracts import (
     HumanAction,
     HumanActionRecord,
     Strategy,
+    View,
 )
 from cce.exceptions import CCEError
 from ui.components.format import DASH, crore, pct, ratio, weight
@@ -62,9 +63,32 @@ def render(svc: Services) -> None:
     with st.sidebar:
         st.subheader("Optimization inputs")
         strategy = st.selectbox(
-            "Strategy", [Strategy.MAX_SHARPE, Strategy.MIN_VOLATILITY],
+            "Strategy",
+            [
+                Strategy.MAX_SHARPE,
+                Strategy.MIN_VOLATILITY,
+                Strategy.CVAR_MIN,
+                Strategy.HRP,
+                Strategy.TARGET_RETURN,
+                Strategy.BLACK_LITTERMAN,
+            ],
             format_func=lambda x: x.value.replace("_", " ").title(),
         )
+        target_return = None
+        if strategy is Strategy.TARGET_RETURN:
+            target_return = st.slider(
+                "Required return", 0.05, 0.25, 0.12, 0.01, format="%.2f",
+                help="Minimum acceptable expected return. If unreachable under "
+                     "the policy, the optimizer reports why rather than "
+                     "relaxing a constraint.",
+            )
+        views = _view_entry(svc) if strategy is Strategy.BLACK_LITTERMAN else ()
+        if strategy is Strategy.HRP:
+            st.caption(
+                "HRP uses no expected returns and no matrix inversion — it is "
+                "robust where mean-variance is fragile. Its allocation is then "
+                "projected onto the policy constraints like any other."
+            )
         er_method = st.selectbox(
             "Expected-return method",
             [ExpectedReturnMethod.HISTORICAL, ExpectedReturnMethod.EWMA],
@@ -75,7 +99,7 @@ def render(svc: Services) -> None:
             "They are the least reliable inputs here."
         )
         if st.button("Run optimization", type="primary", use_container_width=True):
-            _run(svc, state, strategy, er_method)
+            _run(svc, state, strategy, er_method, target_return, views)
 
     if s["error"]:
         st.error(s["error"], icon="⚠")
@@ -96,14 +120,47 @@ def render(svc: Services) -> None:
     _trade_list(svc, state, cycle)
 
 
+def _view_entry(svc):
+    """Black-Litterman view entry, in the words a person uses.
+
+    "IT will outperform broad equity by 2%, and I am 60% confident" becomes
+    one row of P, one entry of Q and one diagonal entry of Omega. The view
+    shifts expected returns and nothing else — the sector cap it might want
+    to breach is applied afterwards, unchanged.
+    """
+    assets = sorted(a.asset_id for a in svc.ctx.universe.assets)
+    st.markdown("**Your view**")
+    asset = st.selectbox("Asset", assets, key="bl_asset")
+    versus = st.selectbox(
+        "Will outperform", ["(the market overall)", *assets], key="bl_versus"
+    )
+    outperformance = st.slider(
+        "By", -0.10, 0.10, 0.02, 0.005, format="%.3f", key="bl_by"
+    )
+    confidence = st.slider("Confidence", 0.1, 1.0, 0.6, 0.1, key="bl_conf")
+    st.caption(
+        "A view moves the expected returns the optimizer sees. It cannot "
+        "move a control."
+    )
+    return (
+        View(
+            asset=asset,
+            versus=None if versus.startswith("(") else versus,
+            outperformance=outperformance,
+            confidence=confidence,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 
-def _run(svc, state, strategy, er_method) -> None:
+def _run(svc, state, strategy, er_method, target_return=None, views=()) -> None:
     s = session()
     try:
         with st.spinner("Optimizing, validating independently, stress testing…"):
             s["cycle"] = svc.optimization.run_cycle(
                 state, strategy=strategy, er_method=er_method,
+                target_return=target_return, views=views,
                 trigger_detail=f"{strategy.value} requested from the dashboard",
             )
         s["error"] = None

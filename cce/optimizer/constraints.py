@@ -65,9 +65,23 @@ def transaction_cost_expr(
 #: weakened every control in the system to hide one optimizer artefact. The
 #: proposer is what should respect the limit it was given.
 #:
-#: 1e-4 is ~3x the observed slack and far below any threshold that matters
-#: (the tightest band in the policy is 0.0015).
-FEASIBILITY_MARGIN = 1e-4
+#: MEASURED, not guessed. Worst turnover excess across all five optimizers
+#: on the committed panel, at each candidate margin:
+#:
+#:     margin 0        +1.178e-04   (min-variance violates)
+#:     margin 1e-4     +1.816e-05   (still violates, barely)
+#:     margin 5e-4     -3.791e-04   (inside for every strategy)
+#:     margin 1e-3     -8.753e-04   (inside, more return given up)
+#:
+#: 5e-4 is the smallest tested value that holds for every strategy, about 4x
+#: the observed slack. Different problem shapes get different solvers with
+#: different tolerances — the frontier scan was comfortably inside at 1e-4
+#: while the min-variance QP was not, which is why this is set from the worst
+#: case rather than the first one measured.
+#:
+#: 0.05pp is immaterial against the bands it touches (turnover 20/25%, cash
+#: floor 3%, sector caps 35%).
+FEASIBILITY_MARGIN = 5e-4
 
 
 def build_constraints(
@@ -76,7 +90,7 @@ def build_constraints(
     constraints: Constraints,
     current: np.ndarray,
     asset_ids: tuple[str, ...],
-    margin: float = FEASIBILITY_MARGIN,
+    margin: float | None = None,
 ) -> list[cp.Constraint]:
     """Every policy constraint, as CVXPY expressions.
 
@@ -89,6 +103,11 @@ def build_constraints(
     is room to move it, so a margin can never invert a bound or make a
     feasible problem infeasible.
     """
+
+    # Read at CALL time, not bound as a default. A module constant captured
+    # in a signature cannot be adjusted or tested without reimporting, and the
+    # first attempt to measure the right value silently measured nothing.
+    margin = FEASIBILITY_MARGIN if margin is None else margin
 
     def tighten(upper_bound: float, not_below: float = 0.0) -> float:
         """Pull a cap inward, never past ``not_below``."""

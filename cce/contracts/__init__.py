@@ -52,7 +52,7 @@ from .market import (
     ValidationFinding,
     ValidationReport,
 )
-from .optimization import Constraints, OptimizationResult
+from .optimization import Constraints, OptimizationResult, View
 from .policy import ModelParams, Policy, Threshold
 from .portfolio import (
     PAISE_PER_CRORE,
@@ -83,7 +83,7 @@ __all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     # risk
     "Breach", "RiskSnapshot", "RiskChange", "ChangeAttribution", "ChangeDriver",
     # optimization / control
-    "Constraints", "OptimizationResult", "ControlResult", "StressResult",
+    "Constraints", "OptimizationResult", "ControlResult", "StressResult", "View",
     "Candidate", "Alert", "Scenario", "LIQUIDITY_KEY",
     # policy
     "Threshold", "ModelParams", "Policy",

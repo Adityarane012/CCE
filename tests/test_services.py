@@ -29,6 +29,7 @@ from cce.contracts import (
     HumanAction,
     HumanActionRecord,
     MarketData,
+    SolverStatus,
     Strategy,
     StressStatus,
 )
@@ -181,12 +182,49 @@ class TestProposeAlwaysValidates:
         assert not optimal.eligible_for_approval
 
     def test_a_failed_solve_still_returns_a_candidate(self, ctx, state):
-        """INV-4: the UI must show WHY there is no proposal, not an empty panel."""
+        """INV-4: the UI must show WHY there is no proposal, not an empty panel.
+
+        TARGET_RETURN with no target is a genuine "cannot be built" case:
+        there is no sensible default target, and inventing one would optimize
+        for a goal nobody set.
+        """
         service = OptimizationService(ctx)
-        candidate = service.propose(state, strategy=Strategy.HRP)  # not implemented
+        candidate = service.propose(state, strategy=Strategy.TARGET_RETURN)
         assert candidate.optimization.weights is None
         assert not candidate.eligible_for_approval
-        assert candidate.optimization.diagnostics or candidate.optimization.solver_status
+        assert candidate.optimization.solver_status is not SolverStatus.OPTIMAL
+
+    @pytest.mark.parametrize("strategy", [
+        Strategy.MAX_SHARPE, Strategy.MIN_VOLATILITY,
+        Strategy.CVAR_MIN, Strategy.HRP,
+    ])
+    def test_every_strategy_is_reachable_and_validated(self, ctx, state, strategy):
+        """PHASE 11: the alternatives are wired through, and still judged."""
+        candidate = OptimizationService(ctx).propose(state, strategy=strategy)
+        assert candidate.optimization.weights is not None, (
+            f"{strategy.value} produced no allocation"
+        )
+        assert candidate.control is not None, (
+            f"{strategy.value} escaped independent validation"
+        )
+        assert candidate.stress, f"{strategy.value} escaped stress testing"
+
+    def test_a_black_litterman_view_moves_the_proposal(self, ctx, state):
+        """A view changes expected returns. It never bypasses a control."""
+        from cce.optimizer import View
+
+        service = OptimizationService(ctx)
+        base = service.propose(state, strategy=Strategy.MAX_SHARPE)
+        with_view = service.propose(
+            state, strategy=Strategy.BLACK_LITTERMAN,
+            views=(View(asset="IT", versus="NIFTY50", outperformance=0.05,
+                        confidence=0.8),),
+        )
+        assert with_view.optimization.weights is not None
+        assert with_view.control is not None, "a view skipped validation"
+        assert with_view.optimization.weights != base.optimization.weights, (
+            "the view did not move the proposal at all"
+        )
 
 
 # ---------------------------------------------------------------------------

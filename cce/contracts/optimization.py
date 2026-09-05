@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from .enums import ExpectedReturnMethod, SolverStatus, Strategy
 
-__all__ = ["Constraints", "OptimizationResult"]
+__all__ = ["Constraints", "OptimizationResult", "View"]
 
 
 @dataclass(frozen=True)
@@ -84,3 +84,26 @@ class OptimizationResult:
     @property
     def succeeded(self) -> bool:
         return self.solver_status.usable and self.weights is not None
+
+
+@dataclass(frozen=True)
+class View:
+    """One opinion, in the form a person actually states it.
+
+    ``asset`` outperforms ``versus`` by ``outperformance`` (a decimal), with
+    ``confidence`` in (0, 1]. ``versus=None`` is an absolute view on the
+    asset's own return rather than a relative one.
+    """
+
+    asset: str
+    outperformance: float
+    confidence: float = 0.5
+    versus: str | None = None
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be in (0, 1], got {self.confidence}"
+            )
+        if self.versus is not None and self.versus == self.asset:
+            raise ValueError("a view cannot compare an asset with itself")

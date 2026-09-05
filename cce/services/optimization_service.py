@@ -20,6 +20,8 @@ import logging
 import uuid
 from dataclasses import dataclass, replace
 
+import numpy as np
+
 from cce.audit import (
     EVENT_BREAKER_TRIPPED,
     EVENT_CANDIDATE_PROPOSED,
@@ -52,9 +54,14 @@ from cce.controls import evaluate_breaker, generate_recovery_candidates, validat
 from cce.decisions import build_explanation
 from cce.decisions.llm import narrate
 from cce.optimizer import (
+    CVaROptimizer,
+    HRPOptimizer,
     MaxSharpeOptimizer,
     MinVolatilityOptimizer,
     OptimizerInputs,
+    TargetReturnOptimizer,
+    View,
+    black_litterman,
     failed_result,
 )
 from cce.risk import estimate_covariance, expected_returns
@@ -102,6 +109,8 @@ class OptimizationService:
         er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
         overrides: Constraints | None = None,
         role: CandidateRole = CandidateRole.SAFE_CONSTRAINED,
+        target_return: float | None = None,
+        views: tuple[View, ...] = (),
     ) -> Candidate:
         """Optimize, then independently validate, then stress test.
 
@@ -111,7 +120,10 @@ class OptimizationService:
         reports an optimistic CVaR cannot talk its way through the gate
         (FR-072, INV-2).
         """
-        opt = self._optimize(strategy, er_method, overrides, state)
+        opt = self._optimize(
+            strategy, er_method, overrides, state,
+            target_return=target_return, views=views,
+        )
         return self._judge(opt, state, role)
 
     def propose_from_weights(
@@ -145,6 +157,8 @@ class OptimizationService:
         state: PortfolioState,
         strategy: Strategy = Strategy.MAX_SHARPE,
         er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
+        target_return: float | None = None,
+        views: tuple[View, ...] = (),
     ) -> tuple[Candidate, Candidate]:
         """``(optimal_unconstrained, safe_constrained)`` for the Safe vs Optimal view.
 
@@ -157,8 +171,10 @@ class OptimizationService:
             self._optimize_unconstrained(er_method, state),
             state, CandidateRole.OPTIMAL_UNCONSTRAINED,
         )
-        safe = self.propose(state, strategy, er_method,
-                            role=CandidateRole.SAFE_CONSTRAINED)
+        safe = self.propose(
+            state, strategy, er_method, role=CandidateRole.SAFE_CONSTRAINED,
+            target_return=target_return, views=views,
+        )
         return unconstrained, safe
 
     def generate_recovery_candidates(
@@ -214,6 +230,8 @@ class OptimizationService:
         trigger_detail: str | None = None,
         strategy: Strategy = Strategy.MAX_SHARPE,
         er_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL,
+        target_return: float | None = None,
+        views: tuple[View, ...] = (),
     ) -> DecisionCycle:
         """Run a full decision cycle and record it.
 
@@ -222,7 +240,10 @@ class OptimizationService:
         candidates, or a tripped breaker without its alert, is a worse
         artefact than no record at all (INV-6).
         """
-        unconstrained, safe = self.propose_safe_and_optimal(state, strategy, er_method)
+        unconstrained, safe = self.propose_safe_and_optimal(
+            state, strategy, er_method,
+            target_return=target_return, views=views,
+        )
         last_safe = self._ctx.repo.get_last_safe_allocation(self._ctx.portfolio_id)
 
         recovery: tuple[Candidate, ...] = ()
@@ -305,6 +326,7 @@ class OptimizationService:
     def _inputs(
         self, er_method: ExpectedReturnMethod, state: PortfolioState,
         overrides: Constraints | None = None,
+        views: tuple[View, ...] = (),
     ) -> OptimizerInputs:
         returns = self._ctx.market_data.returns
         cov, _ = estimate_covariance(returns)
@@ -313,6 +335,23 @@ class OptimizationService:
             lam=self._ctx.policy.ewma_lambda,
             trading_days=self._ctx.policy.trading_days_per_year,
         )
+        if views:
+            # The view shifts mu. It does NOT touch `constraints` below, which
+            # is the whole point: a user who believes IT will outperform can
+            # move the proposal, not the sector cap.
+            asset_ids = tuple(returns.columns)
+            posterior = black_litterman(
+                cov,
+                np.array([state.weights.get(a, 0.0) for a in asset_ids]),
+                views, asset_ids,
+            )
+            if posterior.fell_back:
+                logger.warning(
+                    "Black-Litterman fell back to the equilibrium prior: %s",
+                    posterior.note,
+                )
+            mu = posterior.expected_returns
+            self._last_bl = posterior
         return OptimizerInputs(
             universe=self._ctx.universe,
             returns=returns,
@@ -330,16 +369,46 @@ class OptimizationService:
     def _optimize(
         self, strategy: Strategy, er_method: ExpectedReturnMethod,
         overrides: Constraints | None, state: PortfolioState,
+        target_return: float | None = None,
+        views: tuple[View, ...] = (),
     ) -> OptimizationResult:
-        inputs = self._inputs(er_method, state, overrides)
-        if strategy is Strategy.MIN_VOLATILITY:
-            return MinVolatilityOptimizer().solve(inputs)
-        if strategy is not Strategy.MAX_SHARPE:
+        inputs = self._inputs(er_method, state, overrides, views=views)
+        optimizer = self._optimizer_for(strategy, target_return)
+        if optimizer is None:
             return failed_result(
                 strategy, er_method, SolverStatus.SOLVER_ERROR,
-                f"{strategy.value} is not implemented yet", 0,
+                f"{strategy.value} is not available", 0,
             )
-        return MaxSharpeOptimizer().solve(inputs)
+        return optimizer.solve(inputs)
+
+    def _optimizer_for(self, strategy: Strategy, target_return: float | None):
+        """The optimizer for a strategy, or None if it cannot be built.
+
+        BLACK_LITTERMAN is not a separate optimizer: a view changes expected
+        returns and the CONSTRAINED max-Sharpe problem is then solved as
+        usual. That is the boundary the feature exists to respect — a view
+        moves the proposal, it never bypasses a control.
+        """
+        if strategy in (Strategy.MAX_SHARPE, Strategy.BLACK_LITTERMAN):
+            return MaxSharpeOptimizer()
+        if strategy is Strategy.MIN_VOLATILITY:
+            return MinVolatilityOptimizer()
+        if strategy is Strategy.CVAR_MIN:
+            return CVaROptimizer()
+        if strategy is Strategy.HRP:
+            return HRPOptimizer()
+        if strategy is Strategy.TARGET_RETURN:
+            # A return target is not optional for this strategy, and there is
+            # no sensible default: picking one would silently optimize for a
+            # goal nobody set.
+            if target_return is None:
+                return None
+            return TargetReturnOptimizer(target_return=target_return)
+        # Every Strategy member is handled above, so this is unreachable
+        # today. It stays as the landing point for a member added later —
+        # a new strategy should fail loudly as "not available" rather than
+        # fall through to whichever branch happens to match first.
+        return None  # type: ignore[unreachable]
 
     def _optimize_unconstrained(
         self, er_method: ExpectedReturnMethod, state: PortfolioState
