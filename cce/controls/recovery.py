@@ -13,6 +13,7 @@ from ..contracts import (
     MarketData,
     OptimizationResult,
     Policy,
+    SafeAllocation,
     Universe,
 )
 from .validation import validate
@@ -30,6 +31,10 @@ def generate_recovery_candidates(
     policy: Policy,
     *,
     total_value_paise: int = 0,
+    worst_stress_loss: dict[CandidateRole, float | None] | None = None,
+    data_staleness_days: float | None = None,
+    data_completeness: float | None = None,
+    last_safe_allocation: SafeAllocation | None = None,
 ) -> tuple[Candidate, ...]:
     """Generate independently validated recovery candidates.
 
@@ -39,7 +44,22 @@ def generate_recovery_candidates(
 
     A recovery that fails validation is STILL RETURNED with its failure reasons
     (EC-5.1). It is never dropped silently, nor marked approvable.
+
+    ``worst_stress_loss`` is keyed BY ROLE because each candidate holds
+    different weights and therefore faces a different worst scenario. It, and
+    the two data-quality readings, are measured by the service and passed in:
+    this package can no more run the stress engine than it can import the
+    optimizer.
+
+    **They are not optional in practice.** ``STRESS_LOSS_MAX``,
+    ``DATA_FRESHNESS`` and ``DATA_COMPLETENESS`` are HARD controls, and
+    validating without them leaves all three unevaluated — which correctly
+    yields NOT_VALIDATED, making every recovery candidate unapprovable. The
+    circuit breaker would then trip and offer a risk manager three options,
+    none of which could be chosen. They default to ``None`` only so the
+    failure is a visible NOT_VALIDATED rather than a TypeError.
     """
+    worst_stress_loss = worst_stress_loss or {}
     candidates = []
 
     for role in (
@@ -62,6 +82,10 @@ def generate_recovery_candidates(
             policy,
             total_value_paise=total_value_paise,
             solver_ok=solver_ok,
+            worst_stress_loss=worst_stress_loss.get(role),
+            data_staleness_days=data_staleness_days,
+            data_completeness=data_completeness,
+            last_safe_allocation=last_safe_allocation,
         )
 
         candidates.append(Candidate(

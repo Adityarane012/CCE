@@ -211,13 +211,38 @@ class OptimizationService:
             MinVolatilityOptimizer().solve(defensive)
         )
 
+        # Stress FIRST, per role, then validate — the same ordering _judge
+        # requires and for the same reason. Attaching stress AFTER validation
+        # (which is what this did) leaves STRESS_LOSS_MAX, DATA_FRESHNESS and
+        # DATA_COMPLETENESS unevaluated, so every recovery candidate came back
+        # NOT_VALIDATED. The breaker would trip and offer three options a risk
+        # manager could not choose between, because none was approvable.
+        stress_by_role = {
+            role: self._stress.run(
+                opt.weights, total_value_paise=state.total_value_paise
+            )
+            for role, opt in optimizations.items()
+            if opt.weights
+        }
+        stale_days, completeness = self._data_metrics()
+
         candidates = generate_recovery_candidates(
             optimizations, self._ctx.universe, self._ctx.market_data,
             state.weights, self._ctx.policy,
             total_value_paise=state.total_value_paise,
+            worst_stress_loss={
+                role: self._stress.worst_loss(results)
+                for role, results in stress_by_role.items()
+            },
+            data_staleness_days=stale_days,
+            data_completeness=completeness,
+            last_safe_allocation=self._ctx.repo.get_last_safe_allocation(
+                self._ctx.portfolio_id
+            ),
         )
-        # controls/ cannot run the stress engine either; attach it here.
-        return tuple(self._with_stress(c, state) for c in candidates)
+        return tuple(
+            replace(c, stress=stress_by_role.get(c.role, ())) for c in candidates
+        )
 
     # ------------------------------------------------------------------
     # persistence — the engines construct, this records
@@ -481,20 +506,6 @@ class OptimizationService:
         return panel_metrics(
             self._ctx.market_data.prices, self._ctx.market_data.as_of_date
         )
-
-    def _with_stress(self, candidate: Candidate, state: PortfolioState) -> Candidate:
-        """Attach stress results to a candidate built elsewhere.
-
-        Used for recovery candidates, which ``cce/controls/`` constructs and
-        validates without being able to run the stress engine itself.
-        """
-        if candidate.optimization.weights is None:
-            return candidate
-        results = self._stress.run(
-            candidate.optimization.weights,
-            total_value_paise=state.total_value_paise,
-        )
-        return replace(candidate, stress=results)
 
     def _recommend(
         self, safe: Candidate, recovery: tuple[Candidate, ...]

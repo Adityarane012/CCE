@@ -721,3 +721,55 @@ class TestWhatChanged:
         text = render_change_interpretation(attribution)
         assert "did not materially change" in text
         assert text == render_change_interpretation(attribution)  # deterministic
+
+
+class TestRecoveryCandidatesAreApprovable:
+    """A recovery set nobody may approve is not a recovery set.
+
+    The circuit breaker exists so a human can choose a safer allocation. If
+    every recovery candidate comes back NOT_VALIDATED, the breaker trips and
+    the demo — and the product — dead-ends at the one moment it is supposed
+    to help.
+
+    This is the SAME defect that was fixed on the main propose path: STRESS
+    _LOSS_MAX is a hard control, and validating without the worst measured
+    scenario loss leaves it unevaluated, which correctly yields NOT_VALIDATED.
+    The recovery path attached stress results only AFTER validation had
+    already run blind, so the gate was stuck shut there too.
+    """
+
+    def test_a_healthy_recovery_candidate_can_be_approved(self, ctx, state):
+        from cce.services import OptimizationService
+
+        svc = OptimizationService(ctx)
+        recovery = svc.generate_recovery_candidates(state)
+
+        assert recovery, "no recovery candidates were generated at all"
+        assert any(c.eligible_for_approval for c in recovery), (
+            "every recovery candidate is unapprovable — the circuit breaker "
+            "would leave a risk manager with no action to take:\n"
+            + "\n".join(
+                f"  {c.role.value}: {c.control.status.value if c.control else '?'}"
+                for c in recovery
+            )
+        )
+
+    def test_every_recovery_candidate_was_stress_tested(self, ctx, state):
+        """Validation must SEE the stress result, not merely be handed one later.
+
+        Asserted on the control findings rather than on ``candidate.stress``:
+        attaching stress results for display while validating blind is
+        exactly the bug, and it leaves ``stress`` populated.
+        """
+        from cce.services import OptimizationService
+
+        svc = OptimizationService(ctx)
+        for candidate in svc.generate_recovery_candidates(state):
+            if candidate.control is None:
+                continue
+            assert candidate.stress, f"{candidate.role.value} has no stress results"
+            evaluated = {b.control_code for b in candidate.control.findings}
+            assert candidate.control.status.value != "NOT_VALIDATED", (
+                f"{candidate.role.value} was not fully validated; "
+                f"findings evaluated: {sorted(evaluated)}"
+            )
