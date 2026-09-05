@@ -5,9 +5,15 @@
 
 # ── Market data ──────────────────────────────────────────────
 # Installed from GitHub (project decision), not PyPI.
+#
+# Pinned to a commit, not a branch: `git+https://…` without @<sha>
+# resolves to whatever HEAD is at install time, which is not a pin
+# and would break reproducibility (NFR-012).
+# This commit resolves to jugaad-data 0.35.5.
+#
 # NOTE: jugaad-data does NOT declare pandas as a dependency — its
 # *_df DataFrame API imports it lazily, so pandas must be explicit.
-jugaad-data @ git+https://github.com/jugaad-py/jugaad-data.git
+jugaad-data @ git+https://github.com/jugaad-py/jugaad-data.git@7ae415e5ed5cbbe805bcc43d8bbb4b4ab97c6000
 
 # ── Numerics ─────────────────────────────────────────────────
 numpy==2.4.6
