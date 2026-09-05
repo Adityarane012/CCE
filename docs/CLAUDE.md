@@ -170,6 +170,29 @@ Always: **"Last Approved Safe Allocation"** (never shortened to imply ongoing gu
 
 ## WORKING WITH ME
 
+### Use prompt-master automatically — do not wait to be asked
+
+The `prompt-master` skill is installed at `~/.claude/skills/prompt-master`. Its own
+description says it activates only on an explicit request. **This project overrides that.**
+
+**Invoke `Skill(skill="prompt-master")` before doing any of the following, without being
+asked and without announcing it as a question:**
+
+1. Writing or revising any `PROMPT` block in `docs/IMPLEMENTATION-PLAN.md`
+2. Converting a rough build instruction from the user into a prompt to execute
+3. Writing any prompt intended for another AI tool or agent
+
+**Do NOT invoke it for:** ordinary code edits, running tests, git operations, answering
+questions, or writing prose documentation. Those are the work itself, not prompts.
+
+Rationale: master spec §49 selects Prompt Master specifically for *"converting rough
+development instructions into precise, token-efficient Claude Code prompts."* Every phase
+of the implementation plan is exactly that, and the quality of those prompts determines
+the quality of the build.
+
+If a prompt is produced without the skill having been invoked, that is a process failure —
+say so and redo it.
+
 ### Ask for one module at a time
 Multi-module generation is where layer violations enter.
 
