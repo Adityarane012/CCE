@@ -218,6 +218,7 @@ def _stress_for(conn: sqlite3.Connection, candidate_id: int) -> tuple[StoredStre
             loss_threshold=float(r["loss_threshold"]),
             passed=bool(r["passed"]),
             status=StressStatus(r["status"]),
+            error_reason=r["error_reason"],
             post_shock_volatility=r["post_shock_vol"],
             post_shock_cvar=r["post_shock_cvar"],
             shocks=loads_or_none(r["shocks_json"]) or {},

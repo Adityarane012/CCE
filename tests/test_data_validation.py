@@ -372,3 +372,150 @@ class TestSnapshotMode:
         from cce.data import load_market_data
         src = inspect.getsource(load_market_data)
         assert "snapshot_mode=(used is DataProvider.CACHED)" in src
+
+
+# ---------------------------------------------------------------------------
+# load_market_data — the demo's data entry point (EC-2.1)
+# ---------------------------------------------------------------------------
+
+class TestLoadMarketData:
+    """The orchestration that decides which provider was used, and says so.
+
+    This path was 43% covered while carrying the one behaviour the demo
+    depends on: the system must run with no network and no API key, and when
+    live retrieval fails it must fall back to cache and SAY it fell back.
+    """
+
+    def _stub(self, name: str, panel: pd.DataFrame | None = None, boom: bool = False):
+        """A provider that either returns a panel or raises."""
+        class _P:
+            def __init__(self) -> None:
+                self.name = name
+
+            def fetch_prices(self, universe, start, end):
+                if boom:
+                    raise RuntimeError("network is down")
+                return panel
+
+        return _P()
+
+    def _panel(self, universe, n: int = 400) -> pd.DataFrame:
+        ids = [a.asset_id for a in universe.assets]
+        rng = np.random.default_rng(11)
+        idx = pd.bdate_range(end=pd.Timestamp(date(2026, 8, 31)), periods=n)
+        steps = rng.normal(0.0004, 0.008, (n, len(ids)))
+        return pd.DataFrame(100.0 * np.exp(np.cumsum(steps, axis=0)),
+                            columns=ids, index=idx)
+
+    def test_an_explicit_provider_is_used_as_given(self, universe):
+        from cce.data import load_market_data
+
+        panel = self._panel(universe)
+        md, report = load_market_data(
+            universe, end=date(2026, 8, 31),
+            provider=self._stub("cached", panel),
+        )
+        assert md.provider is DataProvider.CACHED
+        assert report.usable_for_risk
+        assert not md.returns.empty
+
+    def test_a_live_provider_is_labelled_jugaad(self, universe):
+        from cce.data import load_market_data
+
+        md, _ = load_market_data(
+            universe, end=date(2026, 8, 31),
+            provider=self._stub("jugaad", self._panel(universe)),
+        )
+        assert md.provider is DataProvider.JUGAAD
+
+    def test_live_failure_falls_back_to_cache_and_says_so(
+        self, universe, monkeypatch, tmp_path
+    ):
+        """EC-2.1: a live failure must never break the demo, and must never
+        pretend the data came from where it did not.
+
+        CACHED_FALLBACK is a distinct value from CACHED precisely so the UI can
+        show that the caller asked for live data and silently got old data.
+        """
+        import cce.data as data_pkg
+        from cce.data import load_market_data
+
+        panel = self._panel(universe)
+
+        class _Boom:
+            def __init__(self, *a, **kw) -> None:
+                pass
+
+            def fetch_prices(self, *a, **kw):
+                raise RuntimeError("network is down")
+
+        class _Cache:
+            def __init__(self, *a, **kw) -> None:
+                pass
+
+            def fetch_prices(self, *a, **kw):
+                return panel
+
+        monkeypatch.setenv("CCE_DATA_PROVIDER", "jugaad")
+        monkeypatch.setattr(data_pkg, "JugaadDataProvider", _Boom)
+        monkeypatch.setattr(data_pkg, "CachedDataProvider", _Cache)
+
+        md, report = load_market_data(universe, end=date(2026, 8, 31))
+
+        assert md.provider is DataProvider.CACHED_FALLBACK, (
+            "a fallback must not be reported as a normal cached read"
+        )
+        assert report.usable_for_risk
+
+    def test_a_fallback_is_not_exempt_from_the_freshness_check(
+        self, universe, monkeypatch
+    ):
+        """A deliberately frozen snapshot is stale by construction and is
+        exempt. A fallback is not: there the caller wanted live data and got
+        old data, which is exactly what DATA_FRESHNESS exists to catch."""
+        import cce.data as data_pkg
+        from cce.data import load_market_data
+
+        stale = self._panel(universe)
+        stale.index = pd.bdate_range(
+            end=pd.Timestamp(date(2026, 6, 1)), periods=len(stale)
+        )
+
+        class _Boom:
+            def __init__(self, *a, **kw) -> None:
+                pass
+
+            def fetch_prices(self, *a, **kw):
+                raise RuntimeError("down")
+
+        class _Cache:
+            def __init__(self, *a, **kw) -> None:
+                pass
+
+            def fetch_prices(self, *a, **kw):
+                return stale
+
+        monkeypatch.setenv("CCE_DATA_PROVIDER", "jugaad")
+        monkeypatch.setattr(data_pkg, "JugaadDataProvider", _Boom)
+        monkeypatch.setattr(data_pkg, "CachedDataProvider", _Cache)
+
+        try:
+            _, report = load_market_data(universe, end=date(2026, 8, 31))
+        except DataIntegrityError:
+            return  # blocked outright is a valid, and stricter, outcome
+        codes = {f.code for f in report.findings}
+        assert "STALE" in codes or any(
+            "stale" in f.message.lower() for f in report.findings
+        ), "a fallback that returned months-old data must be flagged"
+
+    def test_unusable_data_raises_rather_than_returning_something(self, universe):
+        """A data-integrity failure is a control event, not a warning to
+        ignore. It must not return a half-usable panel (INV-5)."""
+        from cce.data import load_market_data
+
+        empty = pd.DataFrame()
+        with pytest.raises(DataIntegrityError):
+            load_market_data(
+                universe, end=date(2026, 8, 31),
+                provider=self._stub("cached", empty),
+            )

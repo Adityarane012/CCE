@@ -781,6 +781,7 @@ def test_record_stress_results_keeps_the_full_status(repo, conn):
         breaches=(),
         loss_threshold=0.18,
         status=StressStatus.ERROR,
+        error_reason="stress engine raised",
     )
     repo.record_stress_results(
         decision_id, [a_stress_result(passed=False), errored], candidate_id
@@ -815,6 +816,7 @@ def test_an_errored_stress_run_is_never_stored_as_passed(repo, conn):
             breaches=(),
             loss_threshold=0.18,
             status=status,
+            error_reason="probe" if status is StressStatus.ERROR else None,
         )
         repo.record_stress_results(decision_id, [result], candidate_id)
 

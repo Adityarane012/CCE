@@ -64,10 +64,35 @@ class StressResult:
     breaches: tuple[Breach, ...]
     loss_threshold: float
     status: StressStatus
+    #: Why this scenario produced no verdict. Set only when ``status`` is
+    #: ERROR or NOT_RUN. An unexplained ERROR tells a risk manager that
+    #: something went wrong and nothing about what, which is not enough to
+    #: act on — and the log line it replaces is not in front of them.
+    error_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is StressStatus.ERROR and not self.error_reason:
+            raise ValueError(
+                "an ERROR stress result must carry an error_reason (INV-10)"
+            )
+        if self.status is StressStatus.PASSED and self.error_reason:
+            raise ValueError("a PASSED stress result cannot carry an error_reason")
 
     @property
     def passed(self) -> bool:
         return self.status is StressStatus.PASSED
+
+    @property
+    def loss_is_measured(self) -> bool:
+        """Whether ``portfolio_loss`` is a real measurement.
+
+        ``portfolio_loss`` is a plain float, so an ERROR or unrun scenario
+        still carries 0.0. That zero is an artefact of the type, not a
+        finding: rendering it as "0.0% loss" would report a scenario the
+        portfolio never faced as one it survived. The UI renders an em dash
+        unless this is true (INV-5, INV-10).
+        """
+        return self.status in (StressStatus.PASSED, StressStatus.FAILED)
 
 
 @dataclass(frozen=True)

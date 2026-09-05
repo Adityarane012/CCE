@@ -151,6 +151,7 @@ class StoredStressResult:
     loss_threshold: float
     passed: bool
     status: StressStatus
+    error_reason: str | None = None
     post_shock_volatility: float | None = None
     post_shock_cvar: float | None = None
     shocks: dict[str, float] = field(default_factory=dict)

@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from cce.contracts import (
@@ -41,6 +43,7 @@ from cce.controls import (
     is_weakening,
     validate,
 )
+from cce.controls.validation import validate_weights
 from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -348,3 +351,66 @@ def test_validation_is_deterministic(env) -> None:
     b = _validate(env, BANKING_HEAVY)
     assert a.status is b.status
     assert [x.message for x in a.findings] == [x.message for x in b.findings]
+
+
+class TestValidateWeightsWrapper:
+    """The returns-frame convenience wrapper (docs/02 section 5).
+
+    It had no tests at all, which is how its as-of-date handling shipped with
+    a `date.today()` fallback and an isinstance ordering that let a pandas
+    Timestamp through where a date was required.
+    """
+
+    def _returns(self, universe, n=300, index=None):
+        ids = [a.asset_id for a in universe.assets]
+        rng = np.random.default_rng(3)
+        idx = index if index is not None else pd.date_range(
+            end=pd.Timestamp("2026-08-31"), periods=n, freq="B"
+        )
+        return pd.DataFrame(rng.normal(0.0004, 0.01, (n, len(ids))),
+                            columns=ids, index=idx)
+
+    def test_it_reaches_a_verdict_on_a_normal_frame(self, universe, policy):
+        r = validate_weights(
+            CURRENT, universe, self._returns(universe), CURRENT, policy
+        )
+        assert r.status in (ControlStatus.PASSED, ControlStatus.FAILED)
+        assert r.recomputed is not None
+
+    def test_as_of_date_comes_from_the_last_observation(self, universe, policy):
+        """Not from the wall clock. Substituting today's date would report a
+        stale panel as current and hand DATA_FRESHNESS a value it can never
+        fail on."""
+        returns = self._returns(universe)
+        expected = returns.index[-1].date()
+        r = validate_weights(CURRENT, universe, returns, CURRENT, policy)
+        assert r.recomputed.as_of_date == expected
+
+    def test_a_timestamp_index_yields_a_plain_date(self, universe, policy):
+        """pandas Timestamp subclasses datetime subclasses date, so an
+        isinstance(x, date) test matches it and passes it through. A Timestamp
+        in as_of_date serialises as a full datetime and never matches a
+        trading date read back from the audit store."""
+        returns = self._returns(universe)
+        r = validate_weights(CURRENT, universe, returns, CURRENT, policy)
+        assert type(r.recomputed.as_of_date) is date
+
+    def test_a_plain_date_index_is_accepted(self, universe, policy):
+        idx = pd.Index([date(2026, 1, 1) + timedelta(days=i) for i in range(300)])
+        returns = self._returns(universe, index=idx)
+        r = validate_weights(CURRENT, universe, returns, CURRENT, policy)
+        assert r.recomputed.as_of_date == idx[-1]
+
+    def test_an_empty_frame_is_refused(self, universe, policy):
+        """There is no as-of date for a panel with no observations, and
+        inventing one produces a confident verdict about nothing (INV-5)."""
+        empty = self._returns(universe).iloc[0:0]
+        with pytest.raises(ValueError, match="empty returns panel"):
+            validate_weights(CURRENT, universe, empty, CURRENT, policy)
+
+    def test_a_non_date_index_is_refused(self, universe, policy):
+        """A RangeIndex carries no date, so the wrapper says so rather than
+        guessing."""
+        returns = self._returns(universe).reset_index(drop=True)
+        with pytest.raises(TypeError, match="dates or timestamps"):
+            validate_weights(CURRENT, universe, returns, CURRENT, policy)

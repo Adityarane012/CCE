@@ -11,7 +11,10 @@
 
 [tool.ruff]
 line-length = 90
-target-version = "py312"
+# The venv runs 3.11. Claiming py312 lets ruff propose rewrites that
+# would not run here, and lets mypy accept syntax the interpreter
+# rejects. Raise both together when the runtime moves.
+target-version = "py311"
 extend-exclude = [".venv", "data"]
 
 [tool.ruff.lint]
@@ -80,7 +83,7 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 files = ["cce"]
 # Third-party numerics ship no stubs. Their absence is not a type error in
 # this codebase, and installing partial stubs produces worse signal than none.

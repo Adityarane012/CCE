@@ -270,6 +270,7 @@ def _stress(status: StressStatus):
         is_custom=False, shocks={"BANKING": -0.25}, portfolio_loss=0.09,
         loss_paise=900_000_000, contribution={}, post_shock_volatility=None,
         post_shock_cvar=None, breaches=(), loss_threshold=0.18, status=status,
+        error_reason="probe" if status is StressStatus.ERROR else None,
     ),)
 
 

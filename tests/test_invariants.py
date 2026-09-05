@@ -160,6 +160,7 @@ def a_stress(status: StressStatus = StressStatus.PASSED) -> StressResult:
         contribution={"NIFTY50": 0.05}, post_shock_volatility=0.145,
         post_shock_cvar=0.021, breaches=(a_breach(),) if failed else (),
         loss_threshold=0.18, status=status,
+        error_reason="probe" if status is StressStatus.ERROR else None,
     )
 
 

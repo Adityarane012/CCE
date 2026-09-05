@@ -31,7 +31,34 @@ def run_scenario(
     policy: Policy,
     total_value_paise: int,
 ) -> StressResult:
-    """Apply a stress scenario to a portfolio and evaluate the result."""
+    """Apply a stress scenario to a portfolio and evaluate the result.
+
+    A scenario that applies NOTHING returns ERROR, never PASSED. Two ways
+    that happens, and both used to report a clean pass:
+
+    - an empty shock set, which tests the portfolio against no adversity at
+      all;
+    - a shock key matching no asset id and no sector, which is silently
+      dropped during resolution — one typo in ``config/scenarios.yaml``
+      turns a banking-crisis scenario into a no-op that always passes.
+
+    Either way the portfolio survived nothing, and reporting that as survival
+    is the exact false-safety signal the stress gate exists to prevent.
+    Absence of evidence is not evidence of safety (INV-10).
+    """
+    unresolved = scenario.unresolved_keys(universe)
+    if not scenario.shocks or unresolved:
+        reason = (
+            "scenario defines no shocks"
+            if not scenario.shocks
+            else "shock keys match no asset or sector: " + ", ".join(unresolved)
+        )
+        logger.error(
+            "scenario %s applies nothing (%s); reporting ERROR, not PASSED",
+            scenario.code, reason,
+        )
+        return _errored(scenario, policy, reason)
+
     try:
         portfolio_return = 0.0
         contribution: dict[str, float] = {}
@@ -114,17 +141,30 @@ def run_scenario(
     except Exception:
         # Any failure here is ERROR, and ERROR is never PASSED (INV-10).
         logger.exception("stress engine failed on scenario %s", scenario.code)
-        return StressResult(
-            scenario_code=scenario.code,
-            scenario_label=scenario.label,
-            is_custom=scenario.is_custom,
-            shocks=scenario.shocks,
-            portfolio_loss=0.0,
-            loss_paise=0,
-            contribution={},
-            post_shock_volatility=None,
-            post_shock_cvar=None,
-            breaches=(),
-            loss_threshold=policy.stress_loss_limit,
-            status=StressStatus.ERROR,
-        )
+        return _errored(scenario, policy, "stress engine raised")
+
+
+def _errored(scenario: Scenario, policy: Policy, reason: str) -> StressResult:
+    """A scenario that produced no usable verdict.
+
+    ``portfolio_loss`` is 0.0 only because the contract types it as a plain
+    float; it is NOT a measured loss and must never be rendered as one. The
+    status is the authoritative field, and it is ERROR. Callers displaying a
+    loss figure check the status first (see the Phase 10 note in
+    docs/IMPLEMENTATION-PLAN.md §1b).
+    """
+    return StressResult(
+        scenario_code=scenario.code,
+        scenario_label=scenario.label,
+        is_custom=scenario.is_custom,
+        shocks=scenario.shocks,
+        portfolio_loss=0.0,
+        loss_paise=0,
+        contribution={},
+        post_shock_volatility=None,
+        post_shock_cvar=None,
+        breaches=(),
+        loss_threshold=policy.stress_loss_limit,
+        status=StressStatus.ERROR,
+        error_reason=reason,
+    )

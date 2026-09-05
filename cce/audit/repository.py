@@ -575,8 +575,8 @@ class AuditRepository:
                         scenario_label, is_custom, shocks_json, portfolio_loss,
                         loss_paise, contribution_json, post_shock_vol,
                         post_shock_cvar, breaches_json, passed, loss_threshold,
-                        status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        status, error_reason
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -596,6 +596,7 @@ class AuditRepository:
                             int(r.status is StressStatus.PASSED),
                             r.loss_threshold,
                             r.status.value,
+                            r.error_reason,
                         )
                         for r in results
                     ],
