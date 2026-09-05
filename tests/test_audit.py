@@ -294,12 +294,16 @@ def test_failed_migration_leaves_no_partial_schema(tmp_path: Path, monkeypatch):
 def test_transaction_rolls_back_on_error(conn):
     """The transaction helper undoes everything in the block."""
     before = conn.execute("SELECT COUNT(*) AS c FROM alerts").fetchone()["c"]
-    with pytest.raises(RuntimeError), transaction(conn):
-        conn.execute(
-            "INSERT INTO alerts (created_at, severity, category, title, message) "
-            "VALUES ('2026-08-31', 'INFO', 'DATA', 't', 'm')"
-        )
-        raise RuntimeError("boom")
+    def insert_then_fail() -> None:
+        with transaction(conn):
+            conn.execute(
+                "INSERT INTO alerts (created_at, severity, category, title, message) "
+                "VALUES ('2026-08-31', 'INFO', 'DATA', 't', 'm')"
+            )
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        insert_then_fail()
     after = conn.execute("SELECT COUNT(*) AS c FROM alerts").fetchone()["c"]
     assert after == before
 

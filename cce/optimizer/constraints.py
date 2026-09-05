@@ -61,6 +61,16 @@ def build_constraints(
     columns of the returns panel.
     """
     n = len(asset_ids)
+    if w.size != n:
+        raise ValueError(
+            f"decision variable has {w.size} entries but {n} assets were "
+            "given; the weight vector and the universe must agree"
+        )
+    if current.shape[0] != n:
+        raise ValueError(
+            f"current holdings have {current.shape[0]} entries but {n} "
+            "assets were given"
+        )
     idx = {a: i for i, a in enumerate(asset_ids)}
     out: list[cp.Constraint] = [cp.sum(w) == 1.0]
 

@@ -1,0 +1,90 @@
+# Toolchain configuration for CCE.
+#
+# This file exists because the lint standard was previously implicit: with no
+# configuration, ruff enforced whatever its current default happened to be, so
+# "the lint is clean" meant something different on every ruff release. A
+# project whose constitution requires reproducibility (NFR-012) cannot have a
+# quality gate that moves on its own.
+#
+# The rule set below is what the codebase already satisfies. Rules are ignored
+# only with a reason.
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import sorting
+    "B",         # bugbear — the ones that catch real defects
+    "C4",        # comprehension clarity
+    "SIM",       # simplification
+    "RUF",       # ruff-specific
+    "DTZ",       # naive datetimes — see cce/clock.py for why this matters here
+    "BLE",       # blind except — NFR-013
+    "TRY",       # exception handling
+    "UP",        # pyupgrade
+    "PT",        # pytest style
+    "PIE",
+    "RSE",
+]
+
+ignore = [
+    # The project deliberately writes long, specific exception messages. A
+    # message like "BANKING at 43.0% exceeds the sector limit of 35.0%" is the
+    # text a risk manager reads (FR-174); moving it out of the raise to
+    # satisfy a linter makes the code worse.
+    "TRY003",
+    # `return` in `try` and `raise ... from` inside `except` are both used
+    # deliberately in the repository's transaction blocks.
+    "TRY300",
+    "TRY301",
+    # Line length is enforced by the formatter, not as an error. Long SQL
+    # strings and threshold messages are more readable unwrapped.
+    "E501",
+    # `pytest.raises(ValueError)` without a match= is fine when the test name
+    # already says which failure is expected.
+    "PT011",
+    # Composite asserts read better than split ones in the financial identity
+    # tests, where the pair IS the assertion (e.g. CVaR >= VaR and both set).
+    "PT018",
+    # Ambiguous-unicode rules fire on the en/em dashes and × used throughout
+    # the docstrings and messages. They are intentional typography.
+    "RUF002",
+    "RUF003",
+    # `class X(str, Enum)` is a deliberate choice, documented in
+    # cce/contracts/enums.py: the members must compare equal to the plain
+    # strings read back from SQLite CHECK-constrained columns and serialise
+    # straight to JSON. StrEnum changes str() semantics.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests construct contract objects with deliberately redundant keyword dicts
+# and assert on values a linter reads as unused.
+"tests/*" = ["ARG001", "ARG002"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cce", "ui", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# -q keeps the default output readable; --strict-markers means a typo in a
+# marker name fails rather than silently registering a new marker.
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+    "error::DeprecationWarning:cce.*",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["cce"]
+# Third-party numerics ship no stubs. Their absence is not a type error in
+# this codebase, and installing partial stubs produces worse signal than none.
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true

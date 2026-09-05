@@ -106,7 +106,7 @@ def liquidity_summary(
         d = (
             None if total_value_paise is None
             else days_to_liquidate(
-                int(round(total_value_paise * w)), asset.adv_paise,
+                round(total_value_paise * w), asset.adv_paise,
                 participation_rate,
             )
         )

@@ -11,7 +11,7 @@ Rs 100 Cr book.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..contracts import (
     PAISE_PER_CRORE,
@@ -135,7 +135,7 @@ def build_portfolio_state(
 
     return PortfolioState(
         portfolio_id=portfolio_id,
-        timestamp=as_of or datetime.now(timezone.utc),
+        timestamp=as_of or datetime.now(UTC),
         as_of_date=market_data.as_of_date,
         total_value_paise=total_value_paise,
         cash_value_paise=cash_paise,

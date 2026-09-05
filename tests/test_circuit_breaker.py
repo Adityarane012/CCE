@@ -5,7 +5,7 @@ Spec: docs/IMPLEMENTATION-PLAN.md Phase 6, INV-4, EC-5.1, EC-5.2.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -32,7 +32,7 @@ from cce.controls.recovery import generate_recovery_candidates
 
 @pytest.fixture
 def now() -> datetime:
-    return datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+    return datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -89,9 +89,9 @@ def test_breaker_does_not_trip_on_passed_candidate(safe_allocation, empty_snapsh
         recomputed=empty_snapshot,
     )
     candidate = Candidate(role=CandidateRole.CURRENT, optimization=opt, control=control)
-    
+
     outcome = evaluate_breaker(candidate, safe_allocation)
-    
+
     assert not outcome.tripped
     assert outcome.alert is None
     assert outcome.events == ()
@@ -126,15 +126,15 @@ def test_breaker_trips_on_hard_red_breach(safe_allocation, empty_snapshot):
         recomputed=empty_snapshot,
     )
     candidate = Candidate(role=CandidateRole.OPTIMAL_UNCONSTRAINED, optimization=opt, control=control)
-    
+
     outcome = evaluate_breaker(candidate, safe_allocation)
-    
+
     assert outcome.tripped
     assert outcome.category is BreakerCategory.CONSTRAINT
     assert outcome.alert is not None
     assert outcome.alert.severity == "RED"
     assert "Too much banking" in outcome.alert.message
-    
+
     # 1 trip event + 1 preserve event
     assert len(outcome.events) == 2
     assert outcome.events[0].event_code == "BREAKER_TRIPPED"
@@ -161,9 +161,9 @@ def test_breaker_preserves_last_approved_safe_allocation(safe_allocation, empty_
         ),
         control=control,
     )
-    
+
     outcome = evaluate_breaker(candidate, safe_allocation)
-    
+
     assert outcome.tripped
     assert outcome.preserved_allocation is safe_allocation
     # It must be the exact same object, not a mutation
@@ -185,9 +185,9 @@ def test_optimizer_exception_preserves_last_safe(safe_allocation, empty_snapshot
         ),
         control=control,
     )
-    
+
     outcome = evaluate_breaker(candidate, safe_allocation)
-    
+
     assert outcome.tripped
     assert outcome.category is BreakerCategory.MODEL
     assert outcome.preserved_allocation is safe_allocation
@@ -208,12 +208,12 @@ def test_no_safe_allocation_reports_explicit_message(empty_snapshot):
         ),
         control=control,
     )
-    
+
     outcome = evaluate_breaker(candidate, None)
-    
+
     assert outcome.tripped
     assert outcome.preserved_allocation is None
-    
+
     assert len(outcome.events) == 2
     assert outcome.events[1].event_code == "NO_SAFE_ALLOCATION"
     assert "No prior safe allocation exists" in outcome.events[1].summary
@@ -222,7 +222,7 @@ def test_no_safe_allocation_reports_explicit_message(empty_snapshot):
 def test_recovery_candidates_are_each_independently_validated(env):
     """Recovery generation returns up to 3 candidates, correctly validated."""
     u, pol, md = env
-    
+
     opt_ms = OptimizationResult(
         strategy=Strategy.MAX_SHARPE, expected_return_method=ExpectedReturnMethod.HISTORICAL,
         solver_status=SolverStatus.OPTIMAL, weights={"NIFTY50": 0.5, "CASH": 0.5},
@@ -231,22 +231,22 @@ def test_recovery_candidates_are_each_independently_validated(env):
         strategy=Strategy.MIN_VOLATILITY, expected_return_method=ExpectedReturnMethod.HISTORICAL,
         solver_status=SolverStatus.OPTIMAL, weights={"CASH": 1.0},
     )
-    
+
     optimizations = {
         CandidateRole.RECOVERY_MAX_SHARPE: opt_ms,
         CandidateRole.RECOVERY_MIN_RISK: opt_mr,
     }
-    
+
     candidates = generate_recovery_candidates(
         optimizations, u, md, {"NIFTY50": 0.5, "CASH": 0.5}, pol, total_value_paise=10_000_000_000
     )
-    
+
     assert len(candidates) == 2
-    
+
     roles = [c.role for c in candidates]
     assert CandidateRole.RECOVERY_MAX_SHARPE in roles
     assert CandidateRole.RECOVERY_MIN_RISK in roles
-    
+
     # Each must have a control result
     for c in candidates:
         assert c.control is not None
@@ -257,23 +257,23 @@ def test_recovery_candidates_are_each_independently_validated(env):
 def test_all_recoveries_failing_yields_no_eligible_candidate(env):
     """EC-5.1: If all three fail, none are eligible."""
     u, pol, md = env
-    
+
     # Bad weights that fail constraint (max weight is 0.3 for NIFTY50, this is 1.0)
     opt = OptimizationResult(
         strategy=Strategy.MAX_SHARPE, expected_return_method=ExpectedReturnMethod.HISTORICAL,
         solver_status=SolverStatus.OPTIMAL, weights={"NIFTY50": 1.0},
     )
-    
+
     optimizations = {
         CandidateRole.RECOVERY_MAX_SHARPE: opt,
         CandidateRole.RECOVERY_MIN_RISK: opt,
         CandidateRole.RECOVERY_DEFENSIVE: opt,
     }
-    
+
     candidates = generate_recovery_candidates(
         optimizations, u, md, {"NIFTY50": 0.5, "CASH": 0.5}, pol, total_value_paise=10_000_000_000
     )
-    
+
     assert len(candidates) == 3
     # None should be eligible
     for c in candidates:
@@ -284,18 +284,18 @@ def test_all_recoveries_failing_yields_no_eligible_candidate(env):
 def test_recovery_that_fails_is_still_returned_with_reasons(env):
     """EC-5.1: Failed recoveries are returned with rejection reasons."""
     u, pol, md = env
-    
+
     opt = OptimizationResult(
         strategy=Strategy.MAX_SHARPE, expected_return_method=ExpectedReturnMethod.HISTORICAL,
         solver_status=SolverStatus.OPTIMAL, weights={"NIFTY50": 1.0},
     )
-    
+
     optimizations = {CandidateRole.RECOVERY_MAX_SHARPE: opt}
-    
+
     candidates = generate_recovery_candidates(
         optimizations, u, md, {"NIFTY50": 0.5, "CASH": 0.5}, pol, total_value_paise=10_000_000_000
     )
-    
+
     assert len(candidates) == 1
     c = candidates[0]
     assert not c.eligible_for_approval

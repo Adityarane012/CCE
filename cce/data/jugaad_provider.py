@@ -144,7 +144,7 @@ class JugaadDataProvider(MarketDataProvider):
                 "portfolio from nothing"
             )
 
-        panel, loss = align_calendar(series)
+        panel, _ = align_calendar(series)  # align_calendar logs its own loss
 
         for aid in synthetic:
             panel[aid] = self._synthesise_cash(list(panel.index)).values

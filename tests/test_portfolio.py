@@ -153,7 +153,7 @@ class TestPaiseAllocation:
         """Documents why largest-remainder is used rather than round()."""
         w = {"A": 1 / 3, "B": 1 / 3, "C": 1 / 3}
         total = 100
-        naive = sum(int(round(total * x)) for x in w.values())
+        naive = sum(round(total * x) for x in w.values())
         assert naive != total          # 33+33+33 = 99
         assert sum(allocate_paise(total, w).values()) == total
 
@@ -172,7 +172,7 @@ class TestPaiseAllocation:
 
 class TestWeightValidation:
     def test_weights_must_sum_to_one(self, universe_mod) -> None:
-        with pytest.raises(ValueError, match="must sum to 1.0"):
+        with pytest.raises(ValueError, match=r"must sum to 1\.0"):
             normalise_weights({"NIFTY50": 0.5, "GOLD": 0.2}, universe_mod)
 
     def test_unknown_asset_rejected(self, universe_mod) -> None:

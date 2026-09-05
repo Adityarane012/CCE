@@ -93,7 +93,7 @@ class TestTradingDateNormalisation:
         assert (correct - naive) == timedelta(days=1)
 
     def test_ist_offset_is_five_thirty(self) -> None:
-        assert IST_OFFSET == timedelta(hours=5, minutes=30)
+        assert timedelta(hours=5, minutes=30) == IST_OFFSET
 
 
 # =========================================================================
@@ -329,8 +329,8 @@ def _universe():
     ]
     return Universe(assets=tuple(
         Asset(asset_id=a, ticker=a, name=a, asset_class=c, sector=s,
-              is_liquid=l, min_weight=0.0, max_weight=0.4, txn_cost_rate=0.001)
-        for a, s, c, l in spec
+              is_liquid=liquid, min_weight=0.0, max_weight=0.4, txn_cost_rate=0.001)
+        for a, s, c, liquid in spec
     ))
 
 

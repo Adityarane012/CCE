@@ -192,7 +192,7 @@ def test_committed_cache_produces_a_valid_covariance() -> None:
         u, date(2000, 1, 1), date(2030, 1, 1)
     )
     md = build_market_data(p, u, DataProvider.CACHED, as_of=date(2026, 8, 31))
-    cov, report = estimate_covariance(md.returns)
+    cov, _ = estimate_covariance(md.returns)
     assert is_psd(cov)
     assert cov.shape == (len(u.assets), len(u.assets))
     # CASH is synthetic with ~zero variance; the matrix must still be usable

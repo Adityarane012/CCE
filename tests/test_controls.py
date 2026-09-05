@@ -212,8 +212,16 @@ class TestUnevaluated:
         r = validate(CURRENT, u, md, CURRENT, pol, total_value_paise=NAV,
                      solver_ok=True, worst_stress_loss=0.05,
                      data_staleness_days=0.0, data_completeness=1.0)
+        # The point of the test: with every input supplied, the engine must
+        # reach a verdict. NOT_VALIDATED here would mean a hard control could
+        # not be evaluated even on complete data — the gate stuck shut.
         assert r.status in (ControlStatus.PASSED, ControlStatus.FAILED)
-        assert not r.recomputed.degraded_reason or True
+        assert r.status is not ControlStatus.NOT_VALIDATED
+        # Degradation is allowed (this fixture's covariance needs repairing),
+        # but it is never silent: a degraded snapshot always says why, so the
+        # UI can label the number rather than present it as clean.
+        if r.recomputed.degraded:
+            assert r.recomputed.degraded_reason
 
     def test_amber_warnings_do_not_block(self, env) -> None:
         """Only HARD breaches block. AMBER warns."""

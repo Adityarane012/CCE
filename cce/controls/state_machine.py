@@ -280,7 +280,7 @@ def _items_for(
         return None if value is None else {Scope.PORTFOLIO.value: value}
 
     if code == "CONC_ASSET_MAX":
-        return {a: w for a, w in weights.items()}
+        return dict(weights)
     if code == "CONC_SECTOR_MAX":
         return dict(sector_weights)
     if code == "CONC_ASSET_CLASS_MAX":

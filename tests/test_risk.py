@@ -354,7 +354,7 @@ class TestConcentration:
         assert herfindahl_index({"A": 1.0}) == pytest.approx(1.0)
 
     def test_herfindahl_of_equal_weights_is_one_over_n(self) -> None:
-        w = {c: 0.25 for c in "ABCD"}
+        w = dict.fromkeys("ABCD", 0.25)
         assert herfindahl_index(w) == pytest.approx(0.25)
         assert effective_number_of_assets(w) == pytest.approx(4.0)
 
@@ -513,13 +513,13 @@ class TestRiskInputValidation:
     def test_underinvested_rejected(self, um) -> None:
         from cce.risk import RiskInputs
         u, md = um
-        with pytest.raises(ValueError, match="must sum to 1.0"):
+        with pytest.raises(ValueError, match=r"must sum to 1\.0"):
             RiskInputs(weights={"NIFTY50": 0.5}, universe=u, market_data=md)
 
     def test_overinvested_rejected(self, um) -> None:
         from cce.risk import RiskInputs
         u, md = um
-        with pytest.raises(ValueError, match="must sum to 1.0"):
+        with pytest.raises(ValueError, match=r"must sum to 1\.0"):
             RiskInputs(weights={"NIFTY50": 1.0, "GOLD": 0.5},
                        universe=u, market_data=md)
 

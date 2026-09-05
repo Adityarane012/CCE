@@ -9,7 +9,7 @@ above it inherits the problem.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -34,19 +34,27 @@ from cce.contracts import (
 from cce.contracts.risk import Breach, RiskSnapshot
 from tests.fixtures import synthetic
 
-NOW = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
 
 
 def _risk_snapshot(**kw) -> RiskSnapshot:
-    base = dict(
-        timestamp=NOW, as_of_date=NOW.date(),
-        historical_volatility=0.118, ewma_volatility=0.156,
-        portfolio_volatility=0.150, expected_return=0.132,
-        expected_return_method=ExpectedReturnMethod.HISTORICAL, sharpe=0.94,
-        var_95=0.031, cvar_95=0.087, var_method=VaRMethod.HISTORICAL,
-        current_drawdown=0.04, max_drawdown=0.16, liquidity_ratio=0.11,
-        turnover_from_current=0.0,
-    )
+    base = {
+        "timestamp": NOW,
+        "as_of_date": NOW.date(),
+        "historical_volatility": 0.118,
+        "ewma_volatility": 0.156,
+        "portfolio_volatility": 0.150,
+        "expected_return": 0.132,
+        "expected_return_method": ExpectedReturnMethod.HISTORICAL,
+        "sharpe": 0.94,
+        "var_95": 0.031,
+        "cvar_95": 0.087,
+        "var_method": VaRMethod.HISTORICAL,
+        "current_drawdown": 0.04,
+        "max_drawdown": 0.16,
+        "liquidity_ratio": 0.11,
+        "turnover_from_current": 0.0,
+    }
     base.update(kw)
     return RiskSnapshot(**base)
 
@@ -133,7 +141,7 @@ def test_risk_state_aggregates_to_most_severe() -> None:
 # --------------------------------------------------------------- portfolio
 
 def test_weights_must_sum_to_one() -> None:
-    with pytest.raises(ValueError, match="must sum to 1.0"):
+    with pytest.raises(ValueError, match=r"must sum to 1\.0"):
         synthetic.demo_portfolio(weights={"NIFTY50": 0.60, "CASH": 0.39})
 
 
@@ -214,7 +222,7 @@ def test_control_result_cannot_pass_with_hard_breaches() -> None:
 
 def test_cvar_below_var_is_rejected() -> None:
     """CVaR >= VaR always. If not, the tail slice is wrong."""
-    with pytest.raises(ValueError, match="CVaR .* < VaR"):
+    with pytest.raises(ValueError, match=r"CVaR .* < VaR"):
         _risk_snapshot(var_95=0.09, cvar_95=0.04)
 
 

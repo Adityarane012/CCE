@@ -9,7 +9,7 @@ ignore red.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -164,12 +164,12 @@ def demo_portfolio(
     """A Rs 100 Cr portfolio state built from a weight dict."""
     weights = weights or healthy_weights()
     universe = demo_universe()
-    total_paise = int(round(total_crore * PAISE_PER_CRORE))
+    total_paise = round(total_crore * PAISE_PER_CRORE)
 
     positions = []
     for a in universe.assets:
         w = weights.get(a.asset_id, 0.0)
-        value = int(round(total_paise * w))
+        value = round(total_paise * w)
         positions.append(Position(
             asset_id=a.asset_id, ticker=a.ticker, asset_class=a.asset_class,
             sector=a.sector, price=100.0, units=value / 100.0,
@@ -178,10 +178,10 @@ def demo_portfolio(
 
     return PortfolioState(
         portfolio_id="DEMO_100CR",
-        timestamp=datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 8, 31, 10, 0, tzinfo=UTC),
         as_of_date=date(2026, 8, 31),
         total_value_paise=total_paise,
-        cash_value_paise=int(round(total_paise * weights.get("CASH", 0.0))),
+        cash_value_paise=round(total_paise * weights.get("CASH", 0.0)),
         positions=tuple(positions),
         weights=dict(weights),
         return_series=known_volatility_series(n=500, sigma_daily=0.008),

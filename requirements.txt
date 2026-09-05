@@ -39,3 +39,11 @@ scipy==1.17.1          # phase 3 — risk engine, HRP clustering
 # streamlit              # phase 10 — dashboard
 # plotly                 # phase 10 — charts
 # anthropic              # phase 13 — optional LLM narration
+
+# ── Quality gate ─────────────────────────────────────────────
+# Pinned deliberately. Before pyproject.toml existed these were unpinned and
+# unconfigured, so "the lint is clean" meant whatever the installed ruff
+# happened to default to that week — a quality gate that moves on its own is
+# not a gate (NFR-012). The rule set lives in pyproject.toml.
+ruff==0.16.6
+mypy==2.3.1

@@ -56,7 +56,7 @@ from .portfolio import (
 )
 from .risk import Breach, RiskChange, RiskSnapshot
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     # enums
     "Actor", "BreakerCategory", "CandidateRole", "Comparator", "ControlStatus",
     "DataProvider", "ExpectedReturnMethod", "HumanAction", "PortfolioOrigin",

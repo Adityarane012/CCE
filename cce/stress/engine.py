@@ -66,13 +66,13 @@ def run_scenario(
                 post_shock_weights[asset_id] = w * (1 + shock) / (1 + portfolio_return)
         else:
             # 100% loss
-            post_shock_weights = {k: 0.0 for k in weights}
+            post_shock_weights = dict.fromkeys(weights, 0.0)
 
         # Apply LIQUIDITY pseudo-sector shock if present
         liquidity_shock = scenario.shocks.get("LIQUIDITY", 0.0)
         if liquidity_shock != 0.0:
             import dataclasses
-            
+
             shocked_assets = []
             for a in universe.assets:
                 if a.adv_paise is not None:
@@ -111,8 +111,9 @@ def run_scenario(
             loss_threshold=policy.stress_loss_limit,
             status=status,
         )
-    except Exception as e:
-        logger.exception("Stress engine failed on scenario %s: %s", scenario.code, e)
+    except Exception:
+        # Any failure here is ERROR, and ERROR is never PASSED (INV-10).
+        logger.exception("stress engine failed on scenario %s", scenario.code)
         return StressResult(
             scenario_code=scenario.code,
             scenario_label=scenario.label,

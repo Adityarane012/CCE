@@ -6,7 +6,7 @@ Spec: docs/02-ARCHITECTURE.md section 7, docs/IMPLEMENTATION-PLAN.md Phase 6.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ..contracts import (
     Actor,
@@ -46,7 +46,7 @@ def evaluate_breaker(
 
     It performs NO I/O (persistence belongs to the service layer).
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     control = candidate.control
 
     # If not evaluated or passed, breaker does not trip

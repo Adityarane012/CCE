@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -223,7 +223,7 @@ def compute_risk_snapshot(inputs: RiskInputs) -> tuple[RiskSnapshot, CovarianceR
 
     return (
         RiskSnapshot(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             as_of_date=md.as_of_date,
             historical_volatility=hist_vol,
             ewma_volatility=ewma_vol,

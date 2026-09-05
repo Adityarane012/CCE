@@ -137,7 +137,7 @@ def ewma_covariance(
     if not 0.0 < lam < 1.0:
         raise ValueError(f"lambda must be in (0, 1), got {lam}")
     r = returns.dropna().to_numpy(dtype=float)
-    n, k = r.shape
+    n, _ = r.shape
     if n < 2:
         raise ValueError("need at least two observations for a covariance")
 

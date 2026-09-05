@@ -92,7 +92,7 @@ class TestInputValidation:
     def test_current_weights_must_sum_to_one(self, base) -> None:
         """Turnover against a half-invested book is meaningless."""
         u, pol, md, cov, mu = base
-        with pytest.raises(ValueError, match="must sum to 1.0"):
+        with pytest.raises(ValueError, match=r"must sum to 1\.0"):
             OptimizerInputs(
                 universe=u, returns=md.returns, expected_returns=mu,
                 covariance=cov, constraints=pol.constraints,
@@ -177,7 +177,7 @@ class TestFailureHandling:
         """INV-2. Weights may not leave the optimizer unless OPTIMAL."""
         impossible = replace(
             inputs.constraints,
-            max_weights={a: 0.05 for a in inputs.asset_ids},   # caps sum < 1
+            max_weights=dict.fromkeys(inputs.asset_ids, 0.05),   # caps sum < 1
         )
         r = MaxSharpeOptimizer().solve(replace(inputs, constraints=impossible))
         assert r.solver_status is SolverStatus.INFEASIBLE
@@ -189,7 +189,7 @@ class TestFailureHandling:
         to know WHICH constraints conflict."""
         impossible = replace(
             inputs.constraints,
-            max_weights={a: 0.05 for a in inputs.asset_ids},
+            max_weights=dict.fromkeys(inputs.asset_ids, 0.05),
         )
         r = MaxSharpeOptimizer().solve(replace(inputs, constraints=impossible))
         assert "cannot be fully invested" in r.diagnostics["reason"]
@@ -199,7 +199,7 @@ class TestFailureHandling:
         c = replace(
             inputs.constraints,
             min_liquid_share=0.99,
-            max_weights={a: 0.10 for a in inputs.asset_ids},
+            max_weights=dict.fromkeys(inputs.asset_ids, 0.1),
         )
         notes = describe_infeasibility(inputs.universe, c, inputs.asset_ids)
         assert any("liquidity floor" in n for n in notes)
@@ -218,7 +218,7 @@ class TestFailureHandling:
         through the versioned audited flow - not a solver's convenience."""
         impossible = replace(
             inputs.constraints,
-            min_cash_share=0.99, max_weights={a: 0.5 for a in inputs.asset_ids},
+            min_cash_share=0.99, max_weights=dict.fromkeys(inputs.asset_ids, 0.5),
         )
         r = MaxSharpeOptimizer().solve(replace(inputs, constraints=impossible))
         assert r.weights is None
@@ -234,7 +234,7 @@ class TestSafeVsOptimal:
         safe = MaxSharpeOptimizer().solve(inputs).weights
         raw, status, _ = solve_unconstrained_max_sharpe(inputs)
         assert status is SolverStatus.OPTIMAL
-        optimal = dict(zip(inputs.asset_ids, raw))
+        optimal = dict(zip(inputs.asset_ids, raw, strict=True))
         assert optimal != pytest.approx(safe)
 
     def test_unconstrained_achieves_a_higher_sharpe(self, inputs) -> None:

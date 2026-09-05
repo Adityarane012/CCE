@@ -78,7 +78,7 @@ def _solve(problem: cp.Problem) -> tuple[SolverStatus, str]:
         problem.solve()
     except cp.error.SolverError as exc:
         return SolverStatus.SOLVER_ERROR, f"solver raised: {exc}"
-    except Exception as exc:                      # numerical blow-up
+    except Exception as exc:  # noqa: BLE001 - any solver blow-up is SOLVER_ERROR
         return SolverStatus.SOLVER_ERROR, f"{type(exc).__name__}: {exc}"
 
     raw = problem.status or "unknown"
@@ -142,19 +142,16 @@ def efficient_frontier(
 
     # Feasible span: the constrained min-variance portfolio at the bottom,
     # the best single achievable asset return at the top.
-    base, status, raw = solve_min_variance(inputs)
+    base, _, _ = solve_min_variance(inputs)
     if base is None:
         return []
     lo = float(mu @ base)
     hi = float(np.max(mu))
-    if hi <= lo:
-        targets = [lo]
-    else:
-        targets = list(np.linspace(lo, hi, n_points))
+    targets = [lo] if hi <= lo else list(np.linspace(lo, hi, n_points))
 
     out: list[FrontierPoint] = []
     for t in targets:
-        w, st, _ = solve_min_variance(inputs, target_return=t)
+        w, _, _ = solve_min_variance(inputs, target_return=t)
         if w is None:
             continue                       # target unreachable; not an error
         vol = portfolio_volatility(w, inputs.covariance)
@@ -179,8 +176,8 @@ def solve_unconstrained_max_sharpe(
     and the one the control engine rejects.
     """
     relaxed = Constraints(
-        min_weights={a: 0.0 for a in inputs.asset_ids},
-        max_weights={a: 1.0 for a in inputs.asset_ids},
+        min_weights=dict.fromkeys(inputs.asset_ids, 0.0),
+        max_weights=dict.fromkeys(inputs.asset_ids, 1.0),
         sector_max={},
         asset_class_max={},
         min_liquid_share=0.0,
@@ -245,7 +242,7 @@ class MaxSharpeOptimizer(Optimizer):
         weights = inputs.universe.to_dict(best.weights) if len(
             best.weights
         ) == len(inputs.universe.assets) else dict(
-            zip(inputs.asset_ids, best.weights.tolist())
+            zip(inputs.asset_ids, best.weights.tolist(), strict=True)
         )
 
         realised = inputs.returns.to_numpy(dtype=float) @ best.weights

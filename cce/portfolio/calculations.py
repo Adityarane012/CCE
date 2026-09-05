@@ -101,7 +101,7 @@ def transaction_cost_paise(
                 f"cannot cost a trade in {asset_id}: not in the universe"
             ) from None
         total += rate * abs(delta) * total_value_paise
-    return int(round(total))
+    return round(total)
 
 
 def sector_exposure(

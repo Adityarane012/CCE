@@ -111,7 +111,7 @@ class Universe:
             raise ValueError(
                 f"vector length {vec.size} != universe size {len(self.assets)}"
             )
-        return {a: float(v) for a, v in zip(self.asset_ids, vec)}
+        return {a: float(v) for a, v in zip(self.asset_ids, vec, strict=True)}
 
     def sector_map(self) -> dict[str, list[str]]:
         """Sector name to the asset_ids in it."""

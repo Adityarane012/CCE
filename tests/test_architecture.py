@@ -68,7 +68,7 @@ def _py_files(package: str) -> list[Path]:
     return [p for p in d.rglob("*.py") if "__pycache__" not in p.parts]
 
 
-@pytest.mark.parametrize("package,forbidden", sorted(FORBIDDEN.items()))
+@pytest.mark.parametrize(("package", "forbidden"), sorted(FORBIDDEN.items()))
 def test_layer_dependencies(package: str, forbidden: list[str]) -> None:
     """No module may import across a forbidden layer boundary."""
     violations: list[str] = []
