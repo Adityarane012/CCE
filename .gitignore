@@ -21,7 +21,10 @@ docs/*
 # ── Secrets ──────────────────────────────────────────────────
 .env
 .env.*
-.env.example
+# ...but the TEMPLATE is committed: a fresh clone otherwise has no
+# record of which variables exist, and the constitution requires it.
+# It holds no secrets — only defaults and a commented-out placeholder.
+!.env.example
 .streamlit/secrets.toml
 *.pem
 *.key
