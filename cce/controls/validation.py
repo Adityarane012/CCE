@@ -240,10 +240,10 @@ def validate_weights(
 
     Builds a minimal :class:`MarketData` around a returns frame.
     """
+    from datetime import date
+
     from ..contracts import DataProvider
     from ..contracts import MarketData as MD
-
-    from datetime import date
     
     prices = (1.0 + returns).cumprod() * 100.0
     
