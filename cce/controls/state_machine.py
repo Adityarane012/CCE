@@ -29,8 +29,14 @@ from ..contracts import (
     Breach, BreakerCategory, Comparator, Policy, RiskSnapshot, RiskState,
     Scope, Threshold, Universe,
 )
+from ..contracts.policy import BAND_TOLERANCE
 
 logger = logging.getLogger(__name__)
+
+# Alias for concise use in comparisons. Absorbs floating-point noise when
+# comparing held weight against per-class caps that are not expressed as
+# Threshold objects and therefore do not go through Threshold.classify().
+_TOL = BAND_TOLERANCE
 
 __all__ = [
     "ClassificationResult", "classify", "aggregate_state",
@@ -212,11 +218,19 @@ def classify(
         breaches.extend(b)
         states.extend(s)
 
+    # ---- constraint controls: per-item caps a single Threshold cannot express
+    class_breaches = _asset_class_controls(policy, class_weights)
+    breaches.extend(class_breaches)
+    states.extend(b.severity for b in class_breaches)
+    if class_breaches or policy.constraints.asset_class_max:
+        evaluated.append("CONC_ASSET_CLASS_MAX")
+
     # ---- status controls: no numeric band, evaluated as pass/fail ----------
-    breaches.extend(_status_controls(
+    status_breaches = _status_controls(
         policy, solver_ok, covariance_repaired, covariance_note
-    ))
-    states.extend(b.severity for b in breaches[-3:] if b.control_code.startswith("MODEL_"))
+    )
+    breaches.extend(status_breaches)
+    states.extend(b.severity for b in status_breaches)
 
     return ClassificationResult(
         state=aggregate_state(states),
@@ -280,6 +294,48 @@ def _items_for(
 
     logger.warning("no metric mapping for control %s; not evaluated", code)
     return None
+
+
+def _asset_class_controls(
+    policy: Policy, class_weights: dict[str, float]
+) -> list[Breach]:
+    """Per-asset-class exposure caps — ``CONC_ASSET_CLASS_MAX``.
+
+    Not expressible as a ``Threshold``: that model applies ONE band to every
+    item in scope, while class caps differ per class (EQUITY 75%,
+    COMMODITY 25%). So the cap is read straight off
+    ``policy.constraints.asset_class_max``, the same values the optimizer is
+    given.
+
+    **This is HARD.** The docs originally marked it soft, which left a real
+    hole: the optimizer *enforced* the cap but nothing *checked* it, so a
+    candidate arriving any other way — a controlled override, a recovery
+    allocation, a hand-built weight vector — could sit at 90% equity against
+    a 75% cap and never be flagged.
+
+    A candidate that violates a constraint the optimizer was given did not
+    come from the optimizer. That must block, not warn.
+    """
+    caps = policy.constraints.asset_class_max
+    if not caps:
+        return []
+
+    out: list[Breach] = []
+    for asset_class, cap in caps.items():
+        held = class_weights.get(asset_class, 0.0)
+        if held > cap + _TOL:
+            out.append(Breach(
+                control_code="CONC_ASSET_CLASS_MAX",
+                control_label="Asset-class exposure",
+                severity=RiskState.RED, is_hard=True,
+                observed=float(held), threshold=float(cap),
+                comparator=Comparator.GT, scope=asset_class,
+                message=(
+                    f"Asset-class exposure ({asset_class}) {held:.2%} exceeds "
+                    f"the cap of {cap:.2%}"
+                ),
+            ))
+    return out
 
 
 def _status_controls(

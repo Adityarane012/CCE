@@ -11,10 +11,12 @@ and alerting belong to the service layer
 
 from __future__ import annotations
 
+from .circuit_breaker import BreakerOutcome, evaluate_breaker
 from .policy import (
     MATERIAL_CHANGE, PolicyChangePreview, ThresholdChange, diff_policies,
     is_weakening,
 )
+from .recovery import generate_recovery_candidates
 from .state_machine import (
     CONTROL_CATEGORY, PORTFOLIO_METRIC, ClassificationResult, aggregate_state,
     classify,
@@ -27,4 +29,5 @@ __all__ = [
     "validate", "validate_weights",
     "diff_policies", "is_weakening", "PolicyChangePreview",
     "ThresholdChange", "MATERIAL_CHANGE",
+    "BreakerOutcome", "evaluate_breaker", "generate_recovery_candidates",
 ]
