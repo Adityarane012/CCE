@@ -74,9 +74,25 @@ class NarratedExplanation:
 
     @property
     def display_text(self) -> str:
-        """Prefer the LLM prose when present, else the template. Both are
-        display artefacts — neither is ever read back into a decision."""
-        return self.llm_text or self.template_text
+        """Prefer the LLM prose when it says something, else the template.
+
+        Both are display artefacts — neither is ever read back into a decision
+        (INV-1).
+
+        The emptiness test is ``.strip()``, not truthiness. A model that
+        returns a blank or whitespace-only completion is a normal failure
+        mode, and ``llm_text or template_text`` would pass ``"   "`` straight
+        through: the explanation panel goes blank at exactly the moment a
+        rejection needs explaining. The deterministic narrator is the
+        guaranteed floor (FR-142/FR-146), so anything that does not improve on
+        it falls back to it.
+
+        ``llm_text`` itself is kept verbatim, blank or not — the audit record
+        shows what the model actually returned.
+        """
+        if self.llm_text and self.llm_text.strip():
+            return self.llm_text
+        return self.template_text
 
 
 @dataclass(frozen=True)

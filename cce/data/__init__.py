@@ -14,6 +14,7 @@ import logging
 from datetime import date, timedelta
 from pathlib import Path
 
+from ..clock import market_today
 from ..config import PROJECT_ROOT, get_settings
 from ..contracts import DataProvider, MarketData, Universe, ValidationReport
 from ..exceptions import DataIntegrityError
@@ -70,7 +71,7 @@ def load_market_data(
     """
     settings = get_settings()
     cache_dir = cache_dir or DEFAULT_CACHE_DIR
-    end = end or date.today()
+    end = end or market_today()
     start = start or (end - timedelta(days=365 * 3))
 
     used = DataProvider.CACHED

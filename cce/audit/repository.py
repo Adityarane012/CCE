@@ -21,6 +21,7 @@ import sqlite3
 from collections.abc import Sequence
 from datetime import datetime
 
+from cce.clock import utc_now
 from cce.contracts import (
     Alert,
     Breach,
@@ -67,7 +68,7 @@ class AuditWriteError(Exception):
 
 def _now() -> datetime:
     """Timezone-aware wall clock. Audit rows never carry a naive timestamp."""
-    return datetime.now().astimezone()
+    return utc_now()
 
 
 def _risk_change_dict(rc: RiskChange | None) -> dict | None:

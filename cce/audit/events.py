@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from cce.clock import utc_now
 from cce.contracts import Actor, DecisionEvent
 
 __all__ = [
@@ -113,7 +114,7 @@ def make_event(
         )
     return DecisionEvent(
         sequence_no=sequence_no,
-        occurred_at=occurred_at or datetime.now().astimezone(),
+        occurred_at=occurred_at or utc_now(),
         actor=resolved,
         event_code=event_code,
         summary=summary,

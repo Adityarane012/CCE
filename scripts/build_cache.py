@@ -19,10 +19,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cce.config import load_policy, load_universe  # noqa: E402
-from cce.data import (  # noqa: E402
-    DEFAULT_CACHE_DIR, JugaadDataProvider, panel_hash, universe_hash,
-    validate_panel, write_cache,
+from cce.clock import market_today
+from cce.config import load_policy, load_universe
+from cce.data import (
+    DEFAULT_CACHE_DIR,
+    JugaadDataProvider,
+    panel_hash,
+    universe_hash,
+    validate_panel,
+    write_cache,
 )
 
 logging.basicConfig(
@@ -38,7 +43,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=DEFAULT_CACHE_DIR)
     args = ap.parse_args()
 
-    end = date.fromisoformat(args.end) if args.end else date.today()
+    end = date.fromisoformat(args.end) if args.end else market_today()
     start = end - timedelta(days=365 * args.years + 10)
 
     universe = load_universe()

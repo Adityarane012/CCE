@@ -21,7 +21,7 @@ a **rejection** — the safe direction to fail.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, date, datetime
 
 import pandas as pd
 
@@ -70,7 +70,7 @@ def validate(
     Returns ``NOT_VALIDATED`` — never ``PASSED`` — when a hard control could
     not be evaluated. Absence of evidence is not evidence of safety.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # ---- re-derive, independently -----------------------------------------
     try:
@@ -239,19 +239,43 @@ def validate_weights(
     """Convenience wrapper matching the signature in docs/02 section 5.
 
     Builds a minimal :class:`MarketData` around a returns frame.
-    """
-    from datetime import date
 
+    ``as_of_date`` is taken from the LAST OBSERVATION, never from the wall
+    clock. The as-of date says when the data ends; substituting today's date
+    would report a stale panel as current and hand ``DATA_FRESHNESS`` — a
+    hard control — a value it can never fail on.
+
+    Raises:
+        ValueError: If ``returns`` is empty. There is no as-of date for a
+            panel with no observations, and inventing one produces a
+            confident verdict about nothing (INV-5).
+    """
     from ..contracts import DataProvider
     from ..contracts import MarketData as MD
-    
+
+    if returns.empty:
+        raise ValueError(
+            "cannot validate against an empty returns panel: there is no "
+            "as-of date, and missing data is not zero risk (INV-5)"
+        )
+
     prices = (1.0 + returns).cumprod() * 100.0
-    
-    if len(returns) > 0:
-        last = returns.index[-1]
-        as_of_date = last if isinstance(last, date) else getattr(last, "date", lambda: date.today())()
+
+    last = returns.index[-1]
+    # datetime is checked BEFORE date, and the order matters: pandas Timestamp
+    # subclasses datetime, which subclasses date, so an isinstance(x, date)
+    # test matches a Timestamp and would pass it straight through. A Timestamp
+    # reaching as_of_date serialises as a full datetime and would not match a
+    # trading date read back from the audit store.
+    if isinstance(last, datetime):
+        as_of_date = last.date()
+    elif isinstance(last, date):
+        as_of_date = last
     else:
-        as_of_date = date.today()
+        raise TypeError(
+            f"returns index must be dates or timestamps; last entry is "
+            f"{type(last).__name__}"
+        )
 
     md = MD(
         prices=prices, returns=returns,

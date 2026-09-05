@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 import numpy as np
 import pandas as pd
 
+from ..clock import market_today
 from ..contracts import (
     DataProvider,
     MarketData,
@@ -95,7 +96,7 @@ def validate_panel(
     INVALID report is fatal, because a data-integrity failure is a control
     event that must be recorded, not an exception to swallow.
     """
-    as_of = as_of or date.today()
+    as_of = as_of or market_today()
     findings: list[ValidationFinding] = []
 
     # -- EC-2.x schema: columns present and recognised -----------------------
@@ -128,7 +129,18 @@ def validate_panel(
 
     # -- EC-2.3 staleness ----------------------------------------------------
     last = prices.index.max()
-    last_date = last if isinstance(last, date) else pd.Timestamp(last).date()
+    # datetime is checked BEFORE date, and the order is the whole point:
+    # pandas Timestamp subclasses datetime, which subclasses date, so an
+    # isinstance(last, date) test matches a Timestamp and passes it through
+    # untouched. np.busday_count then refuses the datetime64[us] operand and
+    # the staleness check raises instead of producing a number — taking out
+    # DATA_FRESHNESS, a hard control, for every DatetimeIndex-backed panel.
+    if isinstance(last, datetime):
+        last_date = last.date()
+    elif isinstance(last, date):
+        last_date = last
+    else:
+        last_date = pd.Timestamp(last).date()
     stale_days = int(np.busday_count(last_date, as_of))
     if snapshot_mode:
         # Frozen by construction. Recorded so the UI can show the as-of date
