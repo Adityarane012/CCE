@@ -193,6 +193,131 @@ The docs win, or the doc is updated deliberately **in the same commit**. Never l
 
 ---
 
+## GIT & COMMIT DISCIPLINE
+
+### Standing authorization
+
+**Commit proactively.** You do not need to ask before committing in this project — this
+section is the durable authorization. Keep the tree clean and the history legible without
+being prompted.
+
+**You may not push.** Push is blocked by the user's permission settings, and that is
+correct: publishing is their call. Your job is to commit well and *remind them to push*.
+
+### When to commit
+
+Commit at every **completed, coherent unit of work** — not at the end of a session, and
+not after every file save.
+
+| Commit when | Do NOT commit |
+|---|---|
+| A module + its tests are working | Mid-refactor with tests failing |
+| A bug is fixed and covered by a test | A half-written function "to save progress" |
+| A contract or threshold changed (with its doc) | Debug prints, commented-out code, scratch files |
+| A build phase from BUILD ORDER completed | A safety-invariant test left failing |
+| Before starting anything risky | Unrelated changes bundled together |
+
+**One logical change per commit.** Never mix a refactor with a behaviour change — when
+something breaks at 3am, a commit that did two things is a commit you cannot bisect.
+
+### Commit message format
+
+```
+type(scope): imperative subject, max ~70 chars
+
+Why this change exists, and what it affects. Not a restatement of the
+diff — git already has the diff. Explain the reasoning a tired person
+at 3am will need.
+
+- Notable decision or trade-off
+- Anything surprising, or a workaround and its cause
+
+Refs: FR-031, INV-4
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+```
+
+**Types:** `feat` · `fix` · `refactor` · `test` · `docs` · `build` · `chore` · `perf`
+
+**Scopes** follow the module map: `data` · `portfolio` · `risk` · `optimizer` ·
+`controls` · `stress` · `decisions` · `audit` · `backtest` · `services` · `ui` · `config`
+
+**Always reference requirement and invariant IDs** (`FR-`, `NFR-`, `INV-`). This is what
+makes the history searchable under pressure:
+
+```bash
+git log --grep="INV-4"        # every commit touching an invariant
+git log -S "circuit_breaker"  # every commit that changed that code
+git bisect start              # only works if commits are atomic
+```
+
+Good:
+```
+fix(controls): re-derive CVaR instead of reading OptimizationResult
+
+The validator was trusting the optimizer's self-reported CVaR, which
+defeats the independence property — an optimistic solver would have
+passed straight through the safety gate.
+
+Now recomputed from raw returns via cce.risk.cvar.
+
+Refs: FR-072, INV-2
+```
+
+Bad — every one of these costs someone time later:
+```
+update files          (which? why?)
+fix bug               (which bug? how?)
+wip                   (not a unit of work)
+asdf                  (no)
+```
+
+### Push cadence — remind the user
+
+**After every 2–3 commits, surface a reminder in your response.** Not a separate message,
+not a nag — one line at the end of whatever you were already saying:
+
+> **3 commits unpushed.** Run `! git push` when convenient.
+
+Count from the last known push. If unsure, check:
+
+```bash
+git log origin/main..HEAD --oneline    # commits ahead of the remote
+```
+
+Also remind — regardless of count — before anything risky: a large refactor, a dependency
+change, or a threshold/contract change. Unpushed work is work that exists on exactly one
+laptop, and a hackathon is precisely when that laptop breaks.
+
+### Tag known-good states
+
+When the demo works end to end, **tag it**:
+
+```bash
+git tag -a demo-ok-1 -m "Full loop working: shock -> breaker -> recovery -> approval"
+```
+
+At 2am with a broken build, `git checkout demo-ok-1` is the difference between a demo and
+no demo. Tag before every risky change, and suggest tagging whenever the demo checklist in
+`docs/14-DEMO-SCRIPT.md` §0 passes.
+
+### Never commit
+
+`.env` · real API keys · a populated `cce.db` · `.venv/` · secrets of any kind.
+
+**Do** commit `config/*.yaml`, `data/cache/` snapshots, and `.env.example` — the demo's
+reproducibility depends on them.
+
+### Before every commit
+
+- [ ] One logical change only
+- [ ] Safety-invariant tests pass if `controls/`, `optimizer/` or `services/` was touched
+- [ ] Docs updated in the *same* commit if a contract, threshold or behaviour changed
+- [ ] No secrets, no debug prints, no commented-out code
+- [ ] Message explains **why**, and references the relevant `FR-`/`INV-` IDs
+
+---
+
 ## BUILD ORDER
 
 Do **not** start with the dashboard.
