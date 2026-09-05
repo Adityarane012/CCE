@@ -595,15 +595,90 @@ class TestINV6_EveryDecisionIsAuditable:
 # INV-7 — Backtesting must not use future information
 # ===========================================================================
 
-@pytest.mark.skip(
-    reason="cce/backtest/ does not exist yet (PHASE 12). Declared here so the "
-           "gap is visible: a passing test against an absent module would be "
-           "a false green on the invariant that catches look-ahead bias."
-)
-def test_inv7_backtest_uses_no_future_information():
-    """Shift every return at and after t by a constant; every decision at t
-    must be bit-identical (docs/10-RULES.md INV-7)."""
-    raise AssertionError("unimplemented — PHASE 12")
+class TestINV7_NoLookAheadInBacktesting:
+    """The one bug that would invalidate every backtest number.
+
+    Look-ahead does not announce itself: the leaked equity curve looks
+    BETTER, which is exactly why it survives review. So the guard is
+    behavioural, not a code inspection — contaminate the future and assert
+    the past did not move.
+
+    Was skipped until PHASE 12 built ``cce/backtest/``. Both assertions below
+    were verified to FAIL against a deliberately injected leak (``<`` flipped
+    to ``<=`` in ``estimation_window``) before being trusted.
+    """
+
+    def test_the_estimation_window_excludes_the_rebalance_date(self):
+        """``.loc[:t]`` includes ``t``. That inclusive bound is the leak."""
+        import pandas as pd
+
+        from cce.backtest import estimation_window
+
+        idx = pd.bdate_range("2025-01-01", periods=100)
+        returns = pd.DataFrame({"A": np.linspace(0, 1, 100)}, index=idx)
+        t = idx[50]
+
+        window = estimation_window(returns, t)
+        assert t not in window.index, (
+            "the rebalance date is in its own estimation window — its return "
+            "is an outcome, not evidence (INV-7)"
+        )
+        assert window.index.max() < t
+        assert len(window) == 50
+
+    def test_shifting_future_returns_changes_no_earlier_decision(self):
+        """Contaminate everything from a date on; earlier decisions must hold."""
+        import pandas as pd
+
+        from cce.backtest import BacktestConfig, run_backtest
+
+        universe = synthetic.demo_universe()
+        ids = [a.asset_id for a in universe.assets]
+        rng = np.random.default_rng(3)
+        idx = pd.bdate_range(end=pd.Timestamp("2026-08-31"), periods=700)
+        returns = pd.DataFrame(
+            rng.normal(0.0004, 0.01, (len(idx), len(ids))),
+            columns=ids, index=idx,
+        )
+        config = BacktestConfig(
+            start=date(2025, 1, 1), end=date(2026, 8, 31), min_window=250
+        )
+
+        def propose(window, current):
+            vol = window.std(ddof=1)
+            inv = (1.0 / vol.replace(0.0, np.nan)).fillna(0.0)
+            total = inv.sum()
+            return None if total <= 0 else {a: float(v / total) for a, v in inv.items()}
+
+        def record(store):
+            def _p(window, current):
+                w = propose(window, current)
+                store.append((window.index[-1], w))
+                return w
+            return _p
+
+        clean: list = []
+        leaked: list = []
+        run_backtest(returns, universe, None, config, record(clean),
+                     lambda w, win, c: (True, []))
+
+        cut = returns.index[len(returns) // 2]
+        poisoned = returns.copy()
+        poisoned.loc[poisoned.index >= cut] += 0.05
+        run_backtest(poisoned, universe, None, config, record(leaked),
+                     lambda w, win, c: (True, []))
+
+        before_clean = [(t, w) for t, w in clean if t < cut]
+        before_leaked = [(t, w) for t, w in leaked if t < cut]
+        assert before_clean, "no decisions before the contamination point"
+
+        for (ta, wa), (tb, wb) in zip(before_clean, before_leaked, strict=True):
+            assert ta == tb
+            for asset in wa:
+                assert wa[asset] == pytest.approx(wb[asset], abs=1e-12), (
+                    f"the decision at {ta} moved when only FUTURE data changed "
+                    "— the estimation window is leaking (INV-7)"
+                )
 
 
 # ===========================================================================

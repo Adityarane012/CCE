@@ -12,7 +12,10 @@ from __future__ import annotations
 import plotly.graph_objects as go
 
 __all__ = [
+    "STRATEGY_LABELS",
     "allocation_donut",
+    "drawdown_curves",
+    "equity_curves",
     "sector_vs_cap",
     "weight_vs_risk_contribution",
 ]
@@ -117,3 +120,62 @@ def sector_vs_cap(
     fig.update_layout(yaxis={"autorange": "reversed"})
     fig.update_xaxes(title="% of portfolio", ticksuffix="%")
     return _layout(fig, height=max(300, 40 * len(sectors)))
+
+
+#: One colour per strategy, fixed across BOTH charts. A reader comparing the
+#: equity and drawdown panels must not have to re-learn the legend.
+STRATEGY_COLOURS = {
+    "BUY_AND_HOLD": "#6B7280",
+    "UNCONTROLLED_OPTIMIZER": "#C53030",
+    "CCE_CONTROLLED": "#2B6CB0",
+}
+
+STRATEGY_LABELS = {
+    "BUY_AND_HOLD": "Buy and hold",
+    "UNCONTROLLED_OPTIMIZER": "Uncontrolled optimizer",
+    "CCE_CONTROLLED": "CCE-controlled",
+}
+
+
+def equity_curves(curves: dict) -> go.Figure:
+    """Three strategies overlaid, indexed to 100 at the start.
+
+    Indexed rather than shown in rupees because the comparison is between
+    SHAPES, not levels — and a rupee axis invites reading a backtest as a
+    forecast of a real book.
+    """
+    fig = go.Figure()
+    for name, series in curves.items():
+        if series is None or len(series) < 2:
+            continue
+        fig.add_trace(go.Scatter(
+            x=list(series.index),
+            y=[float(v / series.iloc[0] * 100.0) for v in series],
+            name=STRATEGY_LABELS.get(name, name),
+            mode="lines",
+            line={"width": 2, "color": STRATEGY_COLOURS.get(name)},
+        ))
+    fig.update_yaxes(title="Indexed to 100", ticksuffix="")
+    return _layout(fig, 380)
+
+
+def drawdown_curves(drawdowns: dict) -> go.Figure:
+    """Peak-to-trough decline over time, three strategies overlaid.
+
+    The series arrive already negative from the backtest module, so the area
+    fills downward without this function doing arithmetic on them (INV-12).
+    """
+    fig = go.Figure()
+    for name, series in drawdowns.items():
+        if series is None or len(series) < 2:
+            continue
+        fig.add_trace(go.Scatter(
+            x=list(series.index),
+            y=[float(v) * 100.0 for v in series],
+            name=STRATEGY_LABELS.get(name, name),
+            mode="lines",
+            fill="tozeroy",
+            line={"width": 1.5, "color": STRATEGY_COLOURS.get(name)},
+        ))
+    fig.update_yaxes(title="Drawdown (%)", ticksuffix="%")
+    return _layout(fig, 300)

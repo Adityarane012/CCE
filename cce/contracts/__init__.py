@@ -10,6 +10,7 @@ silently (NFR-021).
 
 from __future__ import annotations
 
+from .backtest import BacktestConfig, StrategyMetrics
 from .control import (
     LIQUIDITY_KEY,
     Alert,
@@ -90,4 +91,6 @@ __all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     # decision
     "Explanation", "NarratedExplanation", "HumanActionRecord", "DecisionEvent",
     "SafeAllocation", "DecisionRecord",
+    # backtest
+    "BacktestConfig", "StrategyMetrics",
 ]

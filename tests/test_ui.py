@@ -26,6 +26,7 @@ PAGES = [
     "Risk Control Center",
     "Portfolio & Exposure",
     "Stress Lab",
+    "Backtesting",
     "Decision Replay",
     "Policy & Settings",
 ]
@@ -50,6 +51,20 @@ def app(tmp_path_factory):
 
 def test_the_app_starts(app):
     assert not app.exception, f"app raised on startup: {app.exception}"
+
+
+def test_the_page_list_matches_the_app(app):
+    """PAGES here duplicates app.py's dict, so it can drift.
+
+    A page added to the app but not to this list is simply never smoke-tested
+    — the suite stays green while the new page raises on every click. Compare
+    against the rendered radio rather than importing app.py, which would need
+    a script run context.
+    """
+    assert list(app.sidebar.radio[0].options) == PAGES, (
+        "app.py's PAGES and this test's PAGES disagree; a page is going "
+        "untested"
+    )
 
 
 @pytest.mark.parametrize("page", PAGES)
@@ -153,4 +168,50 @@ def test_the_full_demo_path_works(tmp_path, monkeypatch):
     )
     assert "demo_risk_manager" in rendered, (
         "the approval does not appear in Decision Replay"
+    )
+
+
+def test_the_backtest_page_offers_the_run_control(app):
+    """The button a presenter clicks must exist and be labelled as expected."""
+    app.sidebar.radio[0].set_value("Backtesting").run()
+    labels = [b.label for b in app.button]
+    assert "Run backtest" in labels, f"buttons present: {labels}"
+
+
+def test_the_backtest_page_states_the_look_ahead_construction(app):
+    """docs/09 section 9: judges look for exactly this note.
+
+    Asserted on the rendered page, not on the module source — a note defined
+    but never displayed satisfies a source grep and nothing else.
+    """
+    app.sidebar.radio[0].set_value("Backtesting").run()
+    rendered = " ".join(
+        str(getattr(e, "value", "")) + str(getattr(e, "body", ""))
+        for e in app.markdown
+    )
+    assert "look-ahead" in rendered.lower()
+    assert "INV-7" in rendered
+
+
+def test_the_backtest_actually_runs_from_the_ui(app):
+    """Click Run and assert real numbers land on the page.
+
+    The slowest test in the suite, and worth it: session state, the two
+    charts and the metrics table are all wired by hand here, and every one
+    of them fails at RUNTIME rather than at import.
+    """
+    app.sidebar.radio[0].set_value("Backtesting").run()
+    button = next(b for b in app.button if b.label == "Run backtest")
+    button.click().run(timeout=600)
+
+    assert not app.exception, f"the backtest page raised: {app.exception}"
+    assert not app.error, [e.value for e in app.error]
+
+    rendered = " ".join(
+        str(getattr(e, "value", "")) + str(getattr(e, "body", ""))
+        for e in app.markdown
+    )
+    assert "trade-off on this sample" in rendered, (
+        "the honest-reading caption did not render; a backtest page that "
+        "shows only the favourable numbers is the failure docs/09 forbids"
     )

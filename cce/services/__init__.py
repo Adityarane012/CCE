@@ -23,6 +23,7 @@ Three guarantees the UI inherits by having no other way in:
 from __future__ import annotations
 
 from .approval_service import STALE_MESSAGE, ApprovalService
+from .backtest_service import BacktestService
 from .context import ServiceContext
 from .optimization_service import DecisionCycle, OptimizationService
 from .policy_service import PolicyService
@@ -34,6 +35,7 @@ from .stress_service import StressService
 __all__ = [
     "STALE_MESSAGE",
     "ApprovalService",
+    "BacktestService",
     "DecisionCycle",
     "OptimizationService",
     "PolicyService",

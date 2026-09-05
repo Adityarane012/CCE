@@ -20,6 +20,7 @@ import streamlit as st
 from cce.contracts import Candidate, CandidateRole, PortfolioState, RiskSnapshot
 from cce.services import (
     ApprovalService,
+    BacktestService,
     OptimizationService,
     PolicyService,
     PortfolioService,
@@ -44,6 +45,7 @@ class Services:
     stress: StressService
     replay: ReplayService
     policy: PolicyService
+    backtest: BacktestService
 
     def state(self) -> PortfolioState:
         return self.portfolio.get_current_state()
@@ -69,6 +71,7 @@ def get_services() -> Services:
         stress=StressService(ctx),
         replay=ReplayService(ctx),
         policy=PolicyService(ctx),
+        backtest=BacktestService(ctx),
     )
 
 

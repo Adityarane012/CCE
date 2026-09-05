@@ -27,6 +27,7 @@ st.set_page_config(
 
 from ui.components.indicators import state_chip
 from ui.pages import (
+    backtest,
     optimizer,
     overview,
     portfolio,
@@ -43,6 +44,7 @@ PAGES = {
     "Risk Control Center": risk.render,
     "Portfolio & Exposure": portfolio.render,
     "Stress Lab": stress.render,
+    "Backtesting": backtest.render,
     "Decision Replay": replay.render,
     "Policy & Settings": settings.render,
 }
@@ -79,8 +81,7 @@ def main() -> None:
             icon="⛔",
         )
         st.exception(exc)
-        st.stop()
-        return
+        st.stop()   # NoReturn; nothing below runs
 
     _sidebar_state(svc)
     choice = st.sidebar.radio("Page", list(PAGES), label_visibility="collapsed")
