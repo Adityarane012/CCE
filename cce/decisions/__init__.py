@@ -14,6 +14,7 @@ database itself.
 from __future__ import annotations
 
 from .explanation import build_explanation
+from .llm import narrate, sanitize_for_display
 from .narrator import build_narrated_explanation, render_narrative
 from .replay import TimelineRow, reconstruct_timeline
 
@@ -21,6 +22,8 @@ __all__ = [
     "TimelineRow",
     "build_explanation",
     "build_narrated_explanation",
+    "narrate",
     "reconstruct_timeline",
     "render_narrative",
+    "sanitize_for_display",
 ]

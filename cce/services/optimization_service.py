@@ -49,7 +49,8 @@ from cce.contracts import (
     TriggerType,
 )
 from cce.controls import evaluate_breaker, generate_recovery_candidates, validate
-from cce.decisions import build_explanation, build_narrated_explanation
+from cce.decisions import build_explanation
+from cce.decisions.llm import narrate
 from cce.optimizer import (
     MaxSharpeOptimizer,
     MinVolatilityOptimizer,
@@ -279,7 +280,9 @@ class OptimizationService:
                 safe, unconstrained, outcome, recovery, strategy, trigger_detail
             )
             self._ctx.repo.record_explanation(
-                decision_id, narrated.structured, narrated.template_text
+                decision_id, narrated.structured, narrated.template_text,
+                llm_text=narrated.llm_text, llm_model=narrated.llm_model,
+                llm_error=narrated.llm_error,
             )
 
             if recommended is not None:
@@ -457,10 +460,11 @@ class OptimizationService:
         Every field here comes from a value an engine already computed — this
         assembles, it does not derive.
 
-        The prose is produced by the deterministic narrator, which is the
-        SHIPPING DEFAULT (FR-142). It is complete with no LLM present and no
-        API key configured; the LLM, when there is one, replaces the display
-        text and never this object.
+        The prose comes from :func:`cce.decisions.llm.narrate`, which uses
+        the LLM when one is configured and the deterministic narrator
+        otherwise. The narrator is the SHIPPING DEFAULT (FR-142): the prose is
+        complete with no API key, and no failure in the narration layer can
+        leave a decision unexplained.
         """
         recomputed = safe.control.recomputed if safe.control else None
 
@@ -547,7 +551,7 @@ class OptimizationService:
             action=action,
             expected_improvement=improvement,
         )
-        return build_narrated_explanation(expl)
+        return narrate(expl)
 
     def _events(self, safe, outcome, recovery, trigger_detail):
         seq = 0

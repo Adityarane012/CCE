@@ -38,7 +38,7 @@ pyarrow==25.0.1        # phase 1 — parquet cache
 scipy==1.17.1          # phase 3 — risk engine, HRP clustering
 streamlit==1.63.0      # phase 10 — dashboard
 plotly==7.0.0          # phase 10 — charts
-# anthropic              # phase 13 — optional LLM narration
+anthropic==1.4.0       # phase 13 — OPTIONAL; the system runs fully without a key
 
 # ── Quality gate ─────────────────────────────────────────────
 # Pinned deliberately. Before pyproject.toml existed these were unpinned and
