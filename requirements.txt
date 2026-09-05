@@ -20,11 +20,19 @@ numpy==2.4.6
 pandas==3.0.5
 
 # ── Not yet installed — uncomment as each build phase starts ──
-# See docs/04-WORKFLOW.md Part B for build order.
-# scipy==1.13.1          # phase 3 — risk engine
-# cvxpy==1.5.2           # phase 4 — optimizer
-# pyyaml==6.0.1          # phase 5 — policy config
-# pyarrow==16.1.0        # phase 1 — parquet cache
-# streamlit==1.36.0      # phase 10 — dashboard
-# plotly==5.22.0         # phase 10 — charts
-# pytest==8.2.2          # testing
+# Phases per docs/IMPLEMENTATION-PLAN.md §0 "Dependency timeline".
+# Pin each to the version you actually install and verify.
+# pyyaml                 # phase 0  — policy/universe/scenario config
+# pytest                 # phase 0  — testing
+# python-dotenv          # phase 0  — .env loading
+# pyarrow                # phase 1  — parquet cache
+# scipy                  # phase 3  — risk engine, HRP clustering
+# cvxpy                  # phase 4  — optimizer  ** INSTALL EARLY **
+# streamlit              # phase 10 — dashboard
+# plotly                 # phase 10 — charts
+# anthropic              # phase 13 — optional LLM narration
+#
+# cvxpy is the one likely to fail (compiled solvers on Windows).
+# Install and smoke-test it during phase 0 or 1, not at phase 4 —
+# discovering a broken solver at hour 8 is far more expensive than
+# discovering it at hour 1. Smoke test is in the plan, PHASE 4 DEPS.
