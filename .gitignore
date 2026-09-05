@@ -2,12 +2,22 @@
 # CCE — Capital Control Engine
 # ─────────────────────────────────────────────────────────────
 
-# Documentation (excluded by project decision)
-# NOTE: must be `docs/*` not `docs/` — git cannot re-include a file
-# whose parent DIRECTORY is excluded, so `!docs/CLAUDE.md` would be
-# silently ignored under a `docs/` rule.
+# Documentation
+# Most of the 18-document spec set stays local: publishing all of it makes
+# the repo harder to read, not easier. The five below carry the argument a
+# reviewer actually needs - what it is, how it is layered, what the controls
+# are, what the maths is, and what the safety invariants are.
+#
+# NOTE: must be `docs/*` not `docs/` — git cannot re-include a file whose
+# parent DIRECTORY is excluded, so the negations below would be silently
+# ignored under a `docs/` rule.
 docs/*
 !docs/CLAUDE.md
+!docs/01-PRODUCT-SPECIFICATION.md
+!docs/02-ARCHITECTURE.md
+!docs/07-RISK-POLICY.md
+!docs/08-FINANCIAL-METHODS.md
+!docs/10-RULES.md
 # ── Secrets ──────────────────────────────────────────────────
 .env
 .env.*

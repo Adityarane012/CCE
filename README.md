@@ -190,9 +190,20 @@ Expected returns are labelled **"Model Estimate"** everywhere they appear. They 
 
 ## Documentation
 
-The full specification set (16 documents covering product spec, architecture, TRD, workflow, data contracts, backend schema, risk policy, financial methods, UI spec, engineering rules, testing strategy, security, edge cases, demo script and glossary) is maintained locally and **excluded from this repository by project decision**.
+CCE is specified by an 18-document set. Publishing all of it would make this repo harder to read, not easier, so the five that carry the argument are here and the rest stay local:
 
-`docs/CLAUDE.md` — the project constitution — is committed, and is the fastest way to understand the design constraints this codebase operates under.
+| Document | What it answers |
+|---|---|
+| [`01-PRODUCT-SPECIFICATION.md`](docs/01-PRODUCT-SPECIFICATION.md) | What CCE is, who it's for, what it deliberately is not |
+| [`02-ARCHITECTURE.md`](docs/02-ARCHITECTURE.md) | The layers, the dependency rules, and how optimizer/control independence is enforced |
+| [`07-RISK-POLICY.md`](docs/07-RISK-POLICY.md) | GREEN/AMBER/RED bands, the 20 control codes, circuit-breaker triggers |
+| [`08-FINANCIAL-METHODS.md`](docs/08-FINANCIAL-METHODS.md) | Every formula, convention and numerical-stability rule |
+| [`10-RULES.md`](docs/10-RULES.md) | The twelve safety invariants, each with an ID and a test |
+| [`CLAUDE.md`](docs/CLAUDE.md) | The project constitution — the constraints this codebase operates under |
+
+Kept local: the TRD (113 numbered requirements), workflow, data contracts, backend schema, UI spec, testing strategy, security, edge cases, demo script, glossary and the phase-by-phase implementation plan.
+
+**Start with [`10-RULES.md`](docs/10-RULES.md) §2** if you only read one thing — the twelve invariants are the product's actual claims, and each one has a test.
 
 ---
 
