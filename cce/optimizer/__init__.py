@@ -26,6 +26,7 @@ from .constraints import (
 from .mean_variance import (
     FrontierPoint,
     MaxSharpeOptimizer,
+    MinVolatilityOptimizer,
     efficient_frontier,
     solve_min_variance,
     solve_unconstrained_max_sharpe,
@@ -35,6 +36,7 @@ __all__ = [
     "SOLVER_STATUS_MAP",
     "FrontierPoint",
     "MaxSharpeOptimizer",
+    "MinVolatilityOptimizer",
     "Optimizer",
     "OptimizerInputs",
     "build_constraints",

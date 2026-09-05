@@ -18,13 +18,44 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date
 
-from cce.audit import AuditRepository, get_connection, run_migrations
-from cce.clock import market_today
+from cce.audit import (
+    AuditRepository,
+    MarketSnapshotMeta,
+    get_connection,
+    run_migrations,
+)
+from cce.audit.serialization import dumps
+from cce.clock import market_today, utc_now
 from cce.config import load_universe
 from cce.contracts import MarketData, Policy, Universe, ValidationReport
 from cce.data import load_market_data
 
-__all__ = ["ServiceContext"]
+__all__ = ["ServiceContext", "record_snapshot"]
+
+
+def record_snapshot(
+    repo: AuditRepository, market_data: MarketData, report: ValidationReport
+) -> int:
+    """Persist this panel's provenance and return its id.
+
+    Get-or-create on ``(data_hash, universe_hash)``: analysing the same panel
+    twice is the same snapshot, not a new one.
+    """
+    return repo.ensure_market_snapshot(MarketSnapshotMeta(
+        captured_at=report.checked_at or utc_now(),
+        as_of_date=market_data.as_of_date.isoformat(),
+        provider=market_data.provider.value,
+        universe_hash=market_data.universe_hash,
+        data_hash=market_data.data_hash,
+        row_count=len(market_data.returns),
+        asset_count=len(market_data.returns.columns),
+        validation_status=report.status.value,
+        validation_json=dumps([
+            {"code": f.code, "asset_id": f.asset_id,
+             "severity": f.severity.value, "message": f.message}
+            for f in report.findings
+        ]),
+    ))
 
 DEMO_PORTFOLIO_ID = "DEMO_100CR"
 
@@ -47,7 +78,7 @@ class ServiceContext:
         db_path: str | None = None,
         as_of: date | None = None,
         portfolio_id: str = DEMO_PORTFOLIO_ID,
-        snapshot_id: int = 1,
+        snapshot_id: int | None = None,
     ) -> ServiceContext:
         """Resolve configuration, data and persistence.
 
@@ -55,24 +86,34 @@ class ServiceContext:
         seeded policy exist, and a missing seed is a setup failure rather
         than something to paper over with defaults.
 
-        ``snapshot_id`` defaults to the seeded market snapshot so the demo
-        starts from a coherent state without a network round trip. A live
-        cycle records its own snapshot and passes the new id.
+        The panel's provenance is RECORDED, and the decisions built on this
+        context reference that row. Pointing them at the seeded snapshot
+        instead would leave the audit trail unable to say which price panel
+        backed a verdict, which is the one question ``data_hash`` exists to
+        answer (NFR-012). Pass ``snapshot_id`` only to pin an existing row.
         """
         run_migrations(db_path)
         repo = AuditRepository(get_connection(db_path))
 
         universe = load_universe()
+        # Policy first: the data validator applies the DATA_FRESHNESS and
+        # DATA_COMPLETENESS bands from it, and the CASH proxy accrues its
+        # risk-free rate.
+        policy = repo.get_current_policy()
         market_data, report = load_market_data(
-            universe, end=as_of or market_today()
+            universe, end=as_of or market_today(), policy=policy
         )
         return cls(
             universe=universe,
-            policy=repo.get_current_policy(),
+            policy=policy,
             market_data=market_data,
             validation=report,
             repo=repo,
-            snapshot_id=snapshot_id,
+            snapshot_id=(
+                snapshot_id
+                if snapshot_id is not None
+                else record_snapshot(repo, market_data, report)
+            ),
             portfolio_id=portfolio_id,
         )
 

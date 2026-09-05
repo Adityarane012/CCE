@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 
+import cvxpy as cp
 import numpy as np
 import pytest
 
@@ -28,11 +29,13 @@ from cce.data import DEFAULT_CACHE_DIR, CachedDataProvider, build_market_data
 from cce.optimizer import (
     MaxSharpeOptimizer,
     OptimizerInputs,
+    build_constraints,
     describe_infeasibility,
     efficient_frontier,
     solve_min_variance,
     solve_unconstrained_max_sharpe,
 )
+from cce.portfolio import turnover
 from cce.risk import estimate_covariance, expected_returns, portfolio_volatility
 
 AS_OF = date(2026, 8, 31)
@@ -314,3 +317,95 @@ class TestPurity:
         for f in ("expected_return", "volatility", "sharpe", "turnover",
                   "transaction_cost_paise", "cvar_95"):
             assert getattr(r, f) is not None, f"{f} missing"
+
+
+class TestSolutionRespectsItsOwnConstraints:
+    """The optimizer must not propose what the control engine will reject on a
+    limit the optimizer itself was given.
+
+    A constrained optimum sits exactly ON its active constraints, and a
+    numerical solver satisfies an inequality to its own tolerance rather than
+    to machine precision — the observed turnover was 0.2500306 against a 0.25
+    cap. The control engine re-derives that number and compares at
+    BAND_TOLERANCE (1e-9), so it correctly reported a RED breach.
+
+    The outcome was the worst available: SAFE_CONSTRAINED rejected for
+    breaching the very limit it was optimized under, leaving nothing
+    approvable at all. These tests pin the fix in the proposer, so the control
+    engine can stay strict.
+    """
+
+    def test_turnover_lands_inside_the_cap(self, inputs) -> None:
+        result = MaxSharpeOptimizer().solve(inputs)
+        assert result.weights is not None
+        realised = turnover(result.weights, CURRENT)
+        assert realised <= inputs.constraints.max_turnover, (
+            f"turnover {realised!r} exceeds the cap "
+            f"{inputs.constraints.max_turnover} the solver was given"
+        )
+
+    def test_sector_caps_are_respected_exactly(self, inputs) -> None:
+        result = MaxSharpeOptimizer().solve(inputs)
+        assert result.weights is not None
+        by_sector: dict[str, float] = {}
+        for asset_id, w in result.weights.items():
+            sector = inputs.universe.get(asset_id).sector
+            by_sector[sector] = by_sector.get(sector, 0.0) + w
+        for sector, weight in by_sector.items():
+            cap = inputs.constraints.sector_max.get(sector)
+            if cap is not None:
+                assert weight <= cap, f"{sector} at {weight!r} exceeds cap {cap}"
+
+    def test_per_asset_caps_are_respected_exactly(self, inputs) -> None:
+        result = MaxSharpeOptimizer().solve(inputs)
+        assert result.weights is not None
+        for asset_id, w in result.weights.items():
+            cap = inputs.constraints.max_weights.get(asset_id, 1.0)
+            assert w <= cap, f"{asset_id} at {w!r} exceeds cap {cap}"
+
+    def test_floors_are_respected_exactly(self, inputs) -> None:
+        result = MaxSharpeOptimizer().solve(inputs)
+        assert result.weights is not None
+        cash = sum(
+            w for a, w in result.weights.items()
+            if inputs.universe.get(a).asset_class == "CASH"
+        )
+        assert cash >= inputs.constraints.min_cash_share, (
+            f"cash {cash!r} is below the floor {inputs.constraints.min_cash_share}"
+        )
+        liquid_ids = set(inputs.universe.liquid_ids())
+        liquid = sum(w for a, w in result.weights.items() if a in liquid_ids)
+        assert liquid >= inputs.constraints.min_liquid_share
+
+    def test_the_margin_never_inverts_a_bound(self, base) -> None:
+        """A cap already at its floor must not be pushed below it.
+
+        With min == max the asset is pinned, and tightening the cap would make
+        the problem infeasible — turning a feasible policy into "no allocation
+        exists" for a rounding margin.
+        """
+        u, pol, *_ = base
+        pinned = replace(
+            pol.constraints,
+            min_weights=dict.fromkeys(u.asset_ids, 0.10),
+            max_weights=dict.fromkeys(u.asset_ids, 0.10),
+        )
+        w = cp.Variable(len(u.asset_ids))
+        current = np.array([CURRENT.get(a, 0.0) for a in u.asset_ids])
+        built = build_constraints(w, u, pinned, current, tuple(u.asset_ids))
+        assert built, "constraints could not be built for a pinned allocation"
+
+    def test_a_zero_margin_reproduces_the_defect(self, inputs) -> None:
+        """Documents that the margin is what fixes it, not luck elsewhere.
+
+        With margin=0 the solver is free to return a point marginally outside
+        the cap. Recorded so a future change that drops the margin fails here
+        rather than in the demo.
+        """
+        from cce.optimizer.constraints import FEASIBILITY_MARGIN
+
+        assert FEASIBILITY_MARGIN > 0, (
+            "the feasibility margin is what keeps a constrained optimum inside "
+            "the policy region; removing it makes SAFE_CONSTRAINED "
+            "unapprovable whenever a constraint binds"
+        )

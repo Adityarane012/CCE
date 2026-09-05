@@ -49,9 +49,9 @@ from cce.contracts import (
 from cce.controls import evaluate_breaker, generate_recovery_candidates, validate
 from cce.optimizer import (
     MaxSharpeOptimizer,
+    MinVolatilityOptimizer,
     OptimizerInputs,
     failed_result,
-    solve_min_variance,
 )
 from cce.risk import estimate_covariance, expected_returns
 
@@ -174,18 +174,21 @@ class OptimizationService:
         optimizations[CandidateRole.RECOVERY_MAX_SHARPE] = MaxSharpeOptimizer().solve(
             inputs
         )
-        optimizations[CandidateRole.RECOVERY_MIN_RISK] = self._min_variance(
-            inputs, er_method
+        optimizations[CandidateRole.RECOVERY_MIN_RISK] = (
+            MinVolatilityOptimizer().solve(inputs)
         )
         defensive = replace(
             inputs,
             constraints=replace(
                 inputs.constraints,
-                max_turnover=min(inputs.constraints.max_turnover, 0.10),
+                max_turnover=min(
+                    inputs.constraints.max_turnover,
+                    self._ctx.policy.recovery_max_turnover,
+                ),
             ),
         )
-        optimizations[CandidateRole.RECOVERY_DEFENSIVE] = self._min_variance(
-            defensive, er_method
+        optimizations[CandidateRole.RECOVERY_DEFENSIVE] = (
+            MinVolatilityOptimizer().solve(defensive)
         )
 
         candidates = generate_recovery_candidates(
@@ -307,6 +310,8 @@ class OptimizationService:
             risk_free_rate=self._ctx.policy.risk_free_rate,
             total_value_paise=state.total_value_paise,
             return_method=er_method,
+            var_confidence=self._ctx.policy.var_confidence,
+            min_observations=self._ctx.policy.model.min_return_observations,
         )
 
     def _optimize(
@@ -315,7 +320,7 @@ class OptimizationService:
     ) -> OptimizationResult:
         inputs = self._inputs(er_method, state, overrides)
         if strategy is Strategy.MIN_VOLATILITY:
-            return self._min_variance(inputs, er_method)
+            return MinVolatilityOptimizer().solve(inputs)
         if strategy is not Strategy.MAX_SHARPE:
             return failed_result(
                 strategy, er_method, SolverStatus.SOLVER_ERROR,
@@ -341,51 +346,6 @@ class OptimizationService:
             long_only=True, include_txn_cost=False,
         )
         return MaxSharpeOptimizer().solve(replace(inputs, constraints=unconstrained))
-
-    def _min_variance(
-        self, inputs: OptimizerInputs, er_method: ExpectedReturnMethod
-    ) -> OptimizationResult:
-        """Minimum-variance allocation, with its advisory metrics.
-
-        The metrics are assembled here rather than by reaching into the
-        MaxSharpe optimizer's private builder: they are ADVISORY (FR-072) and
-        the control engine recomputes all of them, but a wrong number in an
-        audit record is still a wrong number.
-        """
-        from cce.portfolio import transaction_cost_paise, turnover
-        from cce.risk import cvar_with_diagnostics, historical_var, portfolio_volatility
-
-        vector, status, note = solve_min_variance(inputs)
-        if vector is None:
-            return failed_result(
-                Strategy.MIN_VOLATILITY, er_method, status, note, 0
-            )
-
-        weights = dict(zip(inputs.asset_ids, vector.tolist(), strict=True))
-        vol = portfolio_volatility(vector, inputs.covariance)
-        er = float(inputs.expected_returns @ vector)
-        realised = inputs.returns.to_numpy(dtype=float) @ vector
-        cvar = cvar_with_diagnostics(realised, 0.95)
-
-        return OptimizationResult(
-            strategy=Strategy.MIN_VOLATILITY,
-            expected_return_method=er_method,
-            solver_status=SolverStatus.OPTIMAL,
-            weights=weights,
-            expected_return=er,
-            volatility=vol,
-            sharpe=(er - inputs.risk_free_rate) / vol if vol > 0 else None,
-            var_95=historical_var(realised, 0.95),
-            cvar_95=cvar.value,
-            turnover=turnover(weights, inputs.current_weights),
-            transaction_cost_paise=(
-                transaction_cost_paise(
-                    weights, inputs.current_weights, inputs.universe,
-                    inputs.total_value_paise,
-                )
-                if inputs.total_value_paise > 0 else None
-            ),
-        )
 
     def _judge(
         self, opt: OptimizationResult, state: PortfolioState, role: CandidateRole

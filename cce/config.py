@@ -213,6 +213,7 @@ def load_policy(path: Path | None = None) -> Policy:
         model=model,
         constraints=constraints,
         stress_loss_limit=float(raw.get("stress_loss_limit", 0.18)),
+        recovery_max_turnover=float(raw.get("recovery_max_turnover", 0.10)),
     )
 
 

@@ -15,9 +15,22 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from ..clock import market_today
+from ..risk.ewma import TRADING_DAYS
 from ..config import PROJECT_ROOT, get_settings
-from ..contracts import DataProvider, MarketData, Universe, ValidationReport
+from ..contracts import (
+    DataProvider,
+    MarketData,
+    Policy,
+    Universe,
+    ValidationReport,
+)
 from ..exceptions import DataIntegrityError
+
+#: Fallback for the synthetic CASH proxy when no Policy is supplied. The
+#: policy's rate is used whenever one is available: a CASH series accruing
+#: a rate nobody configured would quietly misprice the safest asset in the
+#: book, and it is the one every allocation leans on.
+DEFAULT_RISK_FREE_RATE = 0.065
 from .cache import CACHE_FILENAME, CachedDataProvider, write_cache
 from .jugaad_provider import InstrumentUnavailable, JugaadDataProvider
 from .providers import (
@@ -59,6 +72,7 @@ def load_market_data(
     end: date | None = None,
     provider: MarketDataProvider | None = None,
     cache_dir: Path | None = None,
+    policy: Policy | None = None,
 ) -> tuple[MarketData, ValidationReport]:
     """Load and validate market data, falling back to cache on live failure.
 
@@ -79,7 +93,12 @@ def load_market_data(
         if settings.data_provider is DataProvider.JUGAAD:
             try:
                 prices = JugaadDataProvider(
-                    risk_free_rate=0.065
+                    risk_free_rate=(
+                        policy.risk_free_rate if policy else DEFAULT_RISK_FREE_RATE
+                    ),
+                    trading_days=(
+                        policy.trading_days_per_year if policy else TRADING_DAYS
+                    ),
                 ).fetch_prices(universe, start, end)
                 used = DataProvider.JUGAAD
             except Exception as exc:
@@ -109,6 +128,7 @@ def load_market_data(
     report = validate_panel(
         prices, universe, as_of=end,
         snapshot_mode=(used is DataProvider.CACHED),
+        policy=policy,
     )
     if not report.usable_for_risk:
         raise DataIntegrityError(

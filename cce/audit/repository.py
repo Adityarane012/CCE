@@ -868,3 +868,24 @@ class AuditRepository:
                     )
         except sqlite3.Error as e:
             raise AuditWriteError(f"failed to attach recommendation: {e}") from e
+
+    def ensure_market_snapshot(self, snap: MarketSnapshotMeta) -> int:
+        """Record this panel's provenance, or return the existing row's id.
+
+        Get-or-create, because ``(data_hash, universe_hash)`` is UNIQUE: the
+        same panel analysed twice is the same snapshot, and a second insert
+        would fail rather than record anything new.
+
+        This is what makes a decision reproducible (NFR-012). Without it every
+        decision referenced the seeded snapshot, so the audit trail could not
+        say which price panel actually backed a verdict — the one question a
+        reproducibility key exists to answer.
+        """
+        existing = self.conn.execute(
+            "SELECT snapshot_id FROM market_snapshots "
+            "WHERE data_hash = ? AND universe_hash = ?",
+            (snap.data_hash, snap.universe_hash),
+        ).fetchone()
+        if existing is not None:
+            return int(existing["snapshot_id"])
+        return self.record_market_snapshot(snap)

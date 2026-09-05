@@ -28,6 +28,7 @@ model:
   ewma_seed_window: 60
 
 stress_loss_limit: 0.18         # worst configured scenario loss
+recovery_max_turnover: 0.10     # DEFENSIVE recovery moves the book as little as possible
 
 thresholds:
 

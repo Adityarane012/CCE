@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "FrontierPoint",
     "MaxSharpeOptimizer",
+    "MinVolatilityOptimizer",
     "efficient_frontier",
     "solve_min_variance",
     "solve_unconstrained_max_sharpe",
@@ -267,9 +268,13 @@ class MaxSharpeOptimizer(Optimizer):
             expected_return=best.expected_return,
             volatility=best.volatility,
             sharpe=best.sharpe,
-            var_95=historical_var(series, 0.95, min_observations=250),
+            var_95=historical_var(
+                series, inputs.var_confidence,
+                min_observations=inputs.min_observations,
+            ),
             cvar_95=cvar_with_diagnostics(
-                series, 0.95, min_observations=250
+                series, inputs.var_confidence,
+                min_observations=inputs.min_observations,
             ).value,
             turnover=turnover(weights, inputs.current_weights),
             transaction_cost_paise=cost,
@@ -280,3 +285,36 @@ class MaxSharpeOptimizer(Optimizer):
                 "method": "efficient_frontier_scan",
             },
         )
+
+
+class MinVolatilityOptimizer(MaxSharpeOptimizer):
+    """Minimum-variance allocation under the same constraints.
+
+    Subclasses MaxSharpe purely to reuse ``_build_result``: the advisory
+    metrics (FR-072) must be computed identically for every strategy, and a
+    second implementation would eventually report a different VaR for the same
+    weights. Only the objective differs, and it is solved by
+    :func:`solve_min_variance` rather than by scanning the frontier.
+    """
+
+    strategy = Strategy.MIN_VOLATILITY
+
+    def solve(self, inputs: OptimizerInputs) -> OptimizationResult:
+        start = time.perf_counter()
+        vector, status, note = solve_min_variance(inputs, txn_penalty=self.txn_penalty)
+        if vector is None:
+            return failed_result(
+                self.strategy, inputs.return_method, status, note,
+                self._timed(start),
+            )
+
+        vol = portfolio_volatility(vector, inputs.covariance)
+        er = float(inputs.expected_returns @ vector)
+        point = FrontierPoint(
+            target_return=er,
+            volatility=vol,
+            expected_return=er,
+            sharpe=(er - inputs.risk_free_rate) / vol if vol > 0 else 0.0,
+            weights=vector,
+        )
+        return self._build_result(inputs, point, [point], start)

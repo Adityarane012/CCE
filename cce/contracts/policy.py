@@ -142,6 +142,11 @@ class Policy:
     model: ModelParams
     constraints: Constraints
     stress_loss_limit: float = 0.18
+    #: Turnover ceiling for the DEFENSIVE recovery candidate, tighter than
+    #: the ordinary ``constraints.max_turnover``. A recovery proposed while
+    #: the breaker is tripped should move the book as little as it can, so
+    #: the limit is configured rather than assumed in the service.
+    recovery_max_turnover: float = 0.10
 
     def __post_init__(self) -> None:
         codes = [t.control_code for t in self.thresholds]

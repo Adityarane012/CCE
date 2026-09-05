@@ -20,6 +20,7 @@ import numpy as np
 from ..contracts import Constraints, Universe
 
 __all__ = [
+    "FEASIBILITY_MARGIN",
     "build_constraints",
     "describe_infeasibility",
     "transaction_cost_expr",
@@ -48,18 +49,55 @@ def transaction_cost_expr(
     return cp.sum(cp.multiply(rates, cp.abs(w - current)))
 
 
+#: Inward margin applied to every policy CAP before it is handed to the
+#: solver, so a solution that binds a constraint lands strictly INSIDE the
+#: policy region rather than a hair outside it.
+#:
+#: Numerical solvers satisfy an inequality to their own tolerance, not to
+#: machine precision. A constrained optimum sits exactly ON its active
+#: constraints, so the returned turnover was 0.2500306 against a 0.25 cap —
+#: 3e-5 over. The control engine then re-derives that number and, comparing at
+#: ``BAND_TOLERANCE`` (1e-9), correctly reports a RED breach.
+#:
+#: The result was the worst possible outcome: the SAFE_CONSTRAINED allocation
+#: rejected for violating the very limit it was optimized under, leaving
+#: nothing approvable. Widening BAND_TOLERANCE to absorb it would have
+#: weakened every control in the system to hide one optimizer artefact. The
+#: proposer is what should respect the limit it was given.
+#:
+#: 1e-4 is ~3x the observed slack and far below any threshold that matters
+#: (the tightest band in the policy is 0.0015).
+FEASIBILITY_MARGIN = 1e-4
+
+
 def build_constraints(
     w: cp.Variable,
     universe: Universe,
     constraints: Constraints,
     current: np.ndarray,
     asset_ids: tuple[str, ...],
+    margin: float = FEASIBILITY_MARGIN,
 ) -> list[cp.Constraint]:
     """Every policy constraint, as CVXPY expressions.
 
     Ordering of ``w`` follows ``asset_ids``, which follows the priced
     columns of the returns panel.
+
+    Caps are tightened and floors raised by ``margin`` so the solution the
+    optimizer returns still satisfies the ORIGINAL policy limits after solver
+    slack — see :data:`FEASIBILITY_MARGIN`. A bound is only moved when there
+    is room to move it, so a margin can never invert a bound or make a
+    feasible problem infeasible.
     """
+
+    def tighten(upper_bound: float, not_below: float = 0.0) -> float:
+        """Pull a cap inward, never past ``not_below``."""
+        return max(upper_bound - margin, not_below)
+
+    def raise_floor(lower_bound: float, not_above: float = 1.0) -> float:
+        """Push a floor up, never past ``not_above``."""
+        return min(lower_bound + margin, not_above)
+
     n = len(asset_ids)
     if w.size != n:
         raise ValueError(
@@ -81,17 +119,24 @@ def build_constraints(
         [constraints.min_weights.get(a, 0.0) for a in asset_ids], dtype=float
     )
     upper = np.array(
-        [constraints.max_weights.get(a, 1.0) for a in asset_ids], dtype=float
+        [
+            tighten(
+                constraints.max_weights.get(a, 1.0),
+                not_below=constraints.min_weights.get(a, 0.0),
+            )
+            for a in asset_ids
+        ],
+        dtype=float,
     )
     out.append(w >= lower)
     out.append(w <= upper)
 
     # --- sector caps ---
     for sector, ids in universe.sector_map().items():
-        cap = constraints.sector_max.get(sector)
+        sector_cap = constraints.sector_max.get(sector)
         positions = [idx[a] for a in ids if a in idx]
-        if cap is not None and positions:
-            out.append(cp.sum(w[positions]) <= cap)
+        if sector_cap is not None and positions:
+            out.append(cp.sum(w[positions]) <= tighten(sector_cap))
 
     # --- asset-class caps ---
     if constraints.asset_class_max:
@@ -99,23 +144,23 @@ def build_constraints(
         for a in asset_ids:
             classes.setdefault(universe.get(a).asset_class, []).append(idx[a])
         for cls, positions in classes.items():
-            cap = constraints.asset_class_max.get(cls)
-            if cap is not None:
-                out.append(cp.sum(w[positions]) <= cap)
+            class_cap = constraints.asset_class_max.get(cls)
+            if class_cap is not None:
+                out.append(cp.sum(w[positions]) <= tighten(class_cap))
 
     # --- liquidity floor ---
     liquid = [idx[a] for a in universe.liquid_ids() if a in idx]
     if constraints.min_liquid_share > 0 and liquid:
-        out.append(cp.sum(w[liquid]) >= constraints.min_liquid_share)
+        out.append(cp.sum(w[liquid]) >= raise_floor(constraints.min_liquid_share))
 
     # --- cash floor ---
     cash = [idx[a] for a in asset_ids if universe.get(a).asset_class == "CASH"]
     if constraints.min_cash_share > 0 and cash:
-        out.append(cp.sum(w[cash]) >= constraints.min_cash_share)
+        out.append(cp.sum(w[cash]) >= raise_floor(constraints.min_cash_share))
 
     # --- turnover cap ---
     if constraints.max_turnover < 1.0:
-        out.append(turnover_expr(w, current) <= constraints.max_turnover)
+        out.append(turnover_expr(w, current) <= tighten(constraints.max_turnover))
 
     return out
 

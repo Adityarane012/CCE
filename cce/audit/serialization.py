@@ -114,6 +114,7 @@ def policy_to_json(policy: Policy) -> str:
             "version": policy.version,
             "label": policy.label,
             "stress_loss_limit": policy.stress_loss_limit,
+            "recovery_max_turnover": policy.recovery_max_turnover,
             "model": asdict(policy.model),
             "thresholds": [_threshold_to_dict(t) for t in policy.thresholds],
             "constraints": asdict(policy.constraints),
@@ -150,6 +151,7 @@ def policy_from_json(raw: str) -> Policy:
         model=ModelParams(**(d.get("model") or {})),
         constraints=constraints,
         stress_loss_limit=float(d.get("stress_loss_limit", 0.18)),
+        recovery_max_turnover=float(d.get("recovery_max_turnover", 0.10)),
     )
 
 

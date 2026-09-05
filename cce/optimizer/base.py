@@ -67,6 +67,13 @@ class OptimizerInputs:
     total_value_paise: int = 0
     return_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL
     frontier_points: int = 60
+    #: From the policy, not assumed. The optimizer's self-reported VaR and
+    #: CVaR are ADVISORY (FR-072), but an advisory number computed at a
+    #: confidence nobody configured is a wrong number in an audit record —
+    #: it would sit beside the control engine's figure at a different
+    #: confidence and invite the comparison.
+    var_confidence: float = 0.95
+    min_observations: int = 250
 
     def __post_init__(self) -> None:
         n = len(self.asset_ids)

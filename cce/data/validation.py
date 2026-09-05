@@ -10,6 +10,7 @@ report is INVALID and no :class:`MarketData` is produced at all (INV-5).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 import numpy as np
@@ -17,6 +18,7 @@ import pandas as pd
 
 from ..clock import market_today
 from ..contracts import (
+    Policy,
     DataProvider,
     MarketData,
     RiskState,
@@ -33,7 +35,13 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "panel_metrics","ValidationThresholds", "build_market_data", "validate_panel"]
 
-# [DEMO-CONFIG] mirrors config/policy.yaml DATA_* thresholds.
+# [DEMO-CONFIG] FALLBACKS ONLY, used when no Policy is supplied.
+#
+# These previously "mirrored" config/policy.yaml, which meant the same two
+# bands existed in two places: editing policy.yaml moved the control the risk
+# engine applies while this validator silently kept the old numbers. When a
+# Policy is passed, DATA_FRESHNESS and DATA_COMPLETENESS are read FROM IT and
+# these are not consulted.
 MAX_STALE_TRADING_DAYS_GREEN = 1
 MAX_STALE_TRADING_DAYS_AMBER = 3
 MIN_COMPLETENESS_GREEN = 0.98
@@ -43,15 +51,55 @@ MIN_OBSERVATIONS = 250
 MAX_INTERIOR_GAP = 3           # consecutive missing sessions still repairable
 
 
+@dataclass(frozen=True)
 class ValidationThresholds:
-    """Grouped for readability; values mirror config/policy.yaml."""
+    """The bands this validator applies.
 
-    stale_green = MAX_STALE_TRADING_DAYS_GREEN
-    stale_amber = MAX_STALE_TRADING_DAYS_AMBER
-    completeness_green = MIN_COMPLETENESS_GREEN
-    completeness_amber = MIN_COMPLETENESS_AMBER
-    outlier = OUTLIER_ABS_RETURN
-    min_observations = MIN_OBSERVATIONS
+    Built from the Policy when one is available, so ``config/policy.yaml`` is
+    the single source of truth for DATA_FRESHNESS and DATA_COMPLETENESS.
+    """
+
+    stale_green: float = MAX_STALE_TRADING_DAYS_GREEN
+    stale_amber: float = MAX_STALE_TRADING_DAYS_AMBER
+    completeness_green: float = MIN_COMPLETENESS_GREEN
+    completeness_amber: float = MIN_COMPLETENESS_AMBER
+    outlier: float = OUTLIER_ABS_RETURN
+    min_observations: int = MIN_OBSERVATIONS
+
+    @classmethod
+    def from_policy(cls, policy: Policy | None) -> ValidationThresholds:
+        """Read the data bands from the policy in force.
+
+        A control the policy does not define keeps its fallback rather than
+        vanishing: dropping a data-integrity check because a threshold is
+        absent would be a silent weakening.
+        """
+        if policy is None:
+            return cls()
+        fresh = policy.threshold("DATA_FRESHNESS") if policy.has("DATA_FRESHNESS") else None
+        comp = (
+            policy.threshold("DATA_COMPLETENESS")
+            if policy.has("DATA_COMPLETENESS") else None
+        )
+        return cls(
+            stale_green=(
+                fresh.green_max if fresh and fresh.green_max is not None
+                else MAX_STALE_TRADING_DAYS_GREEN
+            ),
+            stale_amber=(
+                fresh.amber_max if fresh and fresh.amber_max is not None
+                else MAX_STALE_TRADING_DAYS_AMBER
+            ),
+            completeness_green=(
+                comp.green_min if comp and comp.green_min is not None
+                else MIN_COMPLETENESS_GREEN
+            ),
+            completeness_amber=(
+                comp.amber_min if comp and comp.amber_min is not None
+                else MIN_COMPLETENESS_AMBER
+            ),
+            min_observations=policy.model.min_return_observations,
+        )
 
 
 def _finding(code: str, asset: str | None, severity: RiskState,
@@ -111,6 +159,7 @@ def validate_panel(
     universe: Universe,
     as_of: date | None = None,
     snapshot_mode: bool = False,
+    policy: Policy | None = None,
 ) -> ValidationReport:
     """Run every check in docs/13-EDGE-CASES.md section 2.
 
@@ -136,6 +185,7 @@ def validate_panel(
     event that must be recorded, not an exception to swallow.
     """
     as_of = as_of or market_today()
+    limits = ValidationThresholds.from_policy(policy)
     findings: list[ValidationFinding] = []
 
     # -- EC-2.x schema: columns present and recognised -----------------------
@@ -184,7 +234,7 @@ def validate_panel(
     if snapshot_mode:
         # Frozen by construction. Recorded so the UI can show the as-of date
         # prominently (docs/09-UI-SPEC.md section 2.2), never hidden.
-        if stale_days > ValidationThresholds.stale_green:
+        if stale_days > limits.stale_green:
             findings.append(_finding(
                 "DEMO_SNAPSHOT", None, RiskState.AMBER,
                 f"using a frozen demo snapshot as of {last_date} "
@@ -193,9 +243,9 @@ def validate_panel(
                 stale_trading_days=stale_days, last_date=str(last_date),
             ))
     else:
-        if stale_days > ValidationThresholds.stale_amber:
+        if stale_days > limits.stale_amber:
             sev = RiskState.RED
-        elif stale_days > ValidationThresholds.stale_green:
+        elif stale_days > limits.stale_green:
             sev = RiskState.AMBER
         else:
             sev = RiskState.GREEN
@@ -208,11 +258,11 @@ def validate_panel(
             ))
 
     # -- EC-2.6 sufficient history ------------------------------------------
-    if len(prices) < ValidationThresholds.min_observations:
+    if len(prices) < limits.min_observations:
         findings.append(_finding(
             "MISSING_OBS", None, RiskState.AMBER,
             f"only {len(prices)} observations; metrics needing "
-            f"{ValidationThresholds.min_observations}+ will be reported as "
+            f"{limits.min_observations}+ will be reported as "
             f"not computed rather than as zero",
             observations=len(prices),
         ))
@@ -227,7 +277,7 @@ def validate_panel(
         run = _longest_nan_run(s)
         trailing = bool(s.iloc[-1:].isna().any())
 
-        if trailing or run > MAX_INTERIOR_GAP or completeness < ValidationThresholds.completeness_amber:
+        if trailing or run > MAX_INTERIOR_GAP or completeness < limits.completeness_amber:
             sev = RiskState.RED
             note = (
                 "trailing gap" if trailing
@@ -247,13 +297,13 @@ def validate_panel(
     # -- EC-2.5 outliers: FLAGGED, never removed -----------------------------
     rets = prices.pct_change().iloc[1:]
     for col in rets.columns:
-        extreme = rets[col].abs() > ValidationThresholds.outlier
+        extreme = rets[col].abs() > limits.outlier
         if extreme.any():
             worst = float(rets[col].abs().max())
             findings.append(_finding(
                 "OUTLIER", col, RiskState.AMBER,
                 f"{col}: {int(extreme.sum())} return(s) beyond "
-                f"+/-{ValidationThresholds.outlier:.0%} (max {worst:.1%}). "
+                f"+/-{limits.outlier:.0%} (max {worst:.1%}). "
                 f"Flagged for review, NOT removed - a genuine crash looks "
                 f"exactly like this.",
                 count=int(extreme.sum()), max_abs_return=worst,
