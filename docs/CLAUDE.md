@@ -347,9 +347,15 @@ If time runs short, **remove cosmetic complexity before removing safety or contr
 | Failure modes and expected behaviour | `docs/13-EDGE-CASES.md` |
 | The judge demo | `docs/14-DEMO-SCRIPT.md` |
 | Vocabulary | `docs/15-GLOSSARY.md` |
+| **The phase-by-phase build** | **`docs/IMPLEMENTATION-PLAN.md`** |
 | Full original blueprint | `docs/CCE_Master_Solution_Specification_INIT26.md` |
 
-There is deliberately **no implementation plan** in `docs/` — build order and priority live in the master spec §56–§57.
+**`IMPLEMENTATION-PLAN.md` is the execution order.** 15 phases, one prompt each, each
+ending in a commit. Build phases in sequence and do not merge two into one prompt —
+multi-module generation is where layer violations enter.
+
+The plan sequences the requirements; it does not create them. If the plan disagrees with
+any other document, **the other document wins** and the plan is what gets corrected.
 
 ---
 
