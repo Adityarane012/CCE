@@ -72,21 +72,29 @@ assets:
     is_liquid: false
     source: stock
 
+  # BHARATBOND was the first choice and does NOT resolve: jugaad-data 0.35.5
+  # raises KeyError on its response schema. EBBETF0433 (Bharat Bond ETF
+  # April 2033) was probed and returns a clean series, so it is used instead.
   - asset_id: CORPBOND
-    ticker: BHARATBOND
-    name: "Corporate bond ETF (proxy)"
+    ticker: EBBETF0433
+    name: "Bharat Bond ETF Apr-2033 (corporate/PSU debt proxy)"
     asset_class: FIXED_INCOME
     sector: CORP_DEBT
     is_liquid: false
     source: stock
 
+  # A real money-market ETF (LIQUIDBEES) IS available and was deliberately
+  # not used: its price sits flat near Rs 1000 because the yield is
+  # distributed, so price returns would report cash as earning ~0% instead of
+  # the risk-free rate. A labelled synthetic series is more honest than a real
+  # series that misrepresents the instrument.
   - asset_id: CASH
     ticker: CASH
-    name: "Cash / T-bill proxy"
+    name: "Cash / T-bill proxy (synthetic)"
     asset_class: CASH
     sector: CASH
     is_liquid: true
     max_weight: 0.40
     txn_cost_rate: 0.0
-    source: synthetic        # derived from the configured risk-free rate
+    source: synthetic        # compounds at the configured risk-free rate
     synthetic: true

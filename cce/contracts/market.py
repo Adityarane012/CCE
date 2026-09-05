@@ -50,6 +50,9 @@ class Asset:
     max_weight: float
     txn_cost_rate: float
     adv_paise: int | None = None
+    source: str = "stock"    # "index" | "stock" | "synthetic" - what KIND of
+                             # instrument this is, which determines both the
+                             # retrieval call and the date convention
     synthetic: bool = False  # e.g. a cash proxy derived from the risk-free rate
 
     def __post_init__(self) -> None:

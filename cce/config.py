@@ -142,6 +142,7 @@ def load_universe(path: Path | None = None) -> Universe:
                     e.get("txn_cost_rate", defaults.get("txn_cost_rate", 0.0010))
                 ),
                 adv_paise=e.get("adv_paise", defaults.get("adv_paise")),
+                source=str(e.get("source", defaults.get("source", "stock"))),
                 synthetic=bool(e.get("synthetic", False)),
             )
         )

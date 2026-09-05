@@ -34,7 +34,7 @@ cvxpy==1.9.2
 # ── Not yet installed — uncomment as each build phase starts ──
 # Phases per docs/IMPLEMENTATION-PLAN.md §0 "Dependency timeline".
 # Pin each to the version you actually install and verify.
-# pyarrow                # phase 1  — parquet cache
+pyarrow==25.0.1        # phase 1 — parquet cache
 # scipy                  # phase 3  — risk engine, HRP clustering
 # streamlit              # phase 10 — dashboard
 # plotly                 # phase 10 — charts
