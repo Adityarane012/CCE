@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -56,7 +57,15 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path is not None else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(path, isolation_level=None)
+    # check_same_thread=False because Streamlit runs every script rerun on a
+    # NEW thread while the connection is cached across reruns. Without it the
+    # second interaction raises "SQLite objects created in a thread can only be
+    # used in that same thread" — the app dies on the first click.
+    #
+    # Safe here only because every write goes through transaction(), which
+    # serialises on a per-connection lock. Cross-thread use of a sqlite3
+    # connection is unsafe when concurrent, not when serialised.
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -73,6 +82,26 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
 #: "cannot start a transaction within a transaction".
 _DEPTH: dict[int, int] = {}
 
+#: One re-entrant lock per connection, guarding both the transaction and the
+#: depth counter above. Connections are opened with check_same_thread=False so
+#: the Streamlit UI can reuse one across reruns; this is what makes that safe,
+#: by serialising the writes rather than merely permitting them.
+#:
+#: RLock, not Lock: transaction() is re-entrant by design, and a plain lock
+#: would deadlock the moment a service composed two repository writes.
+_LOCKS: dict[int, threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(conn: sqlite3.Connection) -> threading.RLock:
+    key = id(conn)
+    with _LOCKS_GUARD:
+        lock = _LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _LOCKS[key] = lock
+        return lock
+
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
@@ -88,26 +117,27 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     without its audit record — that must never happen.
     """
     key = id(conn)
-    depth = _DEPTH.get(key, 0)
+    with _lock_for(conn):
+        depth = _DEPTH.get(key, 0)
 
-    if depth:                       # already inside one; join it
-        _DEPTH[key] = depth + 1
+        if depth:                   # already inside one; join it
+            _DEPTH[key] = depth + 1
+            try:
+                yield conn
+            finally:
+                _DEPTH[key] = depth
+            return
+
+        conn.execute("BEGIN IMMEDIATE;")
+        _DEPTH[key] = 1
         try:
             yield conn
-        finally:
-            _DEPTH[key] = depth
-        return
-
-    conn.execute("BEGIN IMMEDIATE;")
-    _DEPTH[key] = 1
-    try:
-        yield conn
-    except BaseException:
+        except BaseException:
+            _DEPTH[key] = 0
+            conn.execute("ROLLBACK;")
+            raise
         _DEPTH[key] = 0
-        conn.execute("ROLLBACK;")
-        raise
-    _DEPTH[key] = 0
-    conn.execute("COMMIT;")
+        conn.execute("COMMIT;")
 
 
 def _applied_migrations(conn: sqlite3.Connection) -> set[int]:

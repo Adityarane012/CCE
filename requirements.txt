@@ -36,8 +36,8 @@ cvxpy==1.9.2
 # Pin each to the version you actually install and verify.
 pyarrow==25.0.1        # phase 1 — parquet cache
 scipy==1.17.1          # phase 3 — risk engine, HRP clustering
-# streamlit              # phase 10 — dashboard
-# plotly                 # phase 10 — charts
+streamlit==1.63.0      # phase 10 — dashboard
+plotly==7.0.0          # phase 10 — charts
 # anthropic              # phase 13 — optional LLM narration
 
 # ── Quality gate ─────────────────────────────────────────────

@@ -69,6 +69,13 @@ ignore = [
 # Tests construct contract objects with deliberately redundant keyword dicts
 # and assert on values a linter reads as unused.
 "tests/*" = ["ARG001", "ARG002"]
+# Streamlit takes its status glyphs as literal characters (icon="ℹ"), and the
+# risk-state chips use ● deliberately — colour is never the only channel
+# (FR-176). RUF001 flags these as ambiguous unicode; here they are the point.
+"ui/*" = ["RUF001"]
+# app.py must call st.set_page_config before any other Streamlit call, so its
+# imports cannot all sit at the top.
+"app.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["cce", "ui", "tests"]

@@ -850,19 +850,52 @@ class TestINV12_UIHasNoFinancialLogic:
 
         test_ui_contains_no_financial_computation()
 
-    def test_the_ui_package_is_not_yet_built(self):
-        """Explicit, so the two guards above are not mistaken for coverage.
+    def test_the_guards_above_run_against_real_files(self):
+        """The two guards above pass vacuously over an empty directory.
 
-        They pass vacuously until PHASE 10 creates ui/. This test fails the
-        moment the directory appears, as a reminder to delete it and rely on
-        the real checks.
+        Until PHASE 10 this class carried a placeholder that FAILED the moment
+        ``ui/`` appeared, so the guards could not be mistaken for coverage
+        while there was nothing to guard. ``ui/`` now exists, so this asserts
+        they have real material to scan — a guard over zero files is not a
+        guard.
         """
         root = Path(__file__).resolve().parent.parent
-        if (root / "ui").exists():
-            pytest.fail(
-                "ui/ now exists — remove this placeholder; the INV-12 guards "
-                "above are now meaningful and must be verified against real files"
-            )
+        ui = root / "ui"
+        assert ui.exists(), "ui/ is missing; INV-12 has nothing to check"
+        modules = [
+            p for p in ui.rglob("*.py") if "__pycache__" not in p.parts
+        ]
+        assert len(modules) >= 5, (
+            f"only {len(modules)} module(s) under ui/; the INV-12 guards are "
+            "close to vacuous"
+        )
+
+    def test_the_approve_gate_is_not_reimplemented_in_the_ui(self):
+        """INV-2 in the presentation layer.
+
+        The UI may READ ``eligible_for_approval``. It must never rebuild the
+        condition — a second implementation of the approval gate is a bug
+        waiting to diverge from the one in the contract, and the divergence
+        would show up as a button that enables when it should not.
+        """
+        import re
+
+        root = Path(__file__).resolve().parent.parent
+        rebuilt = re.compile(
+            r"ControlStatus\.PASSED.*StressStatus\.PASSED"
+            r"|StressStatus\.PASSED.*ControlStatus\.PASSED"
+        )
+        offenders = [
+            f"{p.relative_to(root).as_posix()}:{i}"
+            for p in (root / "ui").rglob("*.py")
+            if "__pycache__" not in p.parts
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if rebuilt.search(line)
+        ]
+        assert not offenders, (
+            "the UI appears to reimplement eligible_for_approval (INV-2): "
+            + ", ".join(offenders)
+        )
 
 
 # ===========================================================================
