@@ -16,7 +16,6 @@ why RISK_DRAWDOWN_CURRENT is a soft control by default.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 __all__ = [

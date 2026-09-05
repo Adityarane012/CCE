@@ -10,7 +10,7 @@ report is INVALID and no :class:`MarketData` is produced at all (INV-5).
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 import numpy as np
 import pandas as pd

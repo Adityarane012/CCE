@@ -1,94 +1,201 @@
-# CCE Documentation
+# CCE — Capital Control Engine
 
-**Product:** CCE — Capital Control Engine
-**Context:** INIT'26 FinTech Hackathon — Asset & Capital Management / Optimization Controls
-**One-line:** An institutional capital-allocation prototype where the optimizer *proposes*, an independent control engine *validates*, stress tests *challenge*, a human *approves*, and every decision is *recorded*.
+> **Optimal ≠ Safe.** The highest-return mathematical allocation is not automatically the allocation an institution should accept.
 
-> **Core principle:** Optimal ≠ Safe. The optimizer is never the final authority.
+An institutional capital-allocation prototype where the optimizer **proposes**, an independent control engine **validates**, stress tests **challenge**, a human **approves**, and every decision is **recorded**.
 
----
-
-## How to use these docs
-
-This folder is the **single source of truth** for building CCE. Code follows docs. If code and docs disagree, one of them is a bug — fix the doc in the same commit that fixes the code.
-
-For AI-assisted ("vibe coding") sessions: `CLAUDE.md` is loaded automatically. Everything else is pulled in on demand — reference documents by filename in your prompt (e.g. *"implement per `07-RISK-POLICY.md` §3"*).
+Built for the INIT'26 FinTech hackathon — *Asset & Capital Management / Optimization Controls*.
 
 ---
 
-## Reading order
+## The problem
 
-### Tier 0 — Why we are building this
-| Doc | Purpose |
-|---|---|
-| [`readme_fintech.md`](./readme_fintech.md) | The original hackathon problem statement and evaluation rubric. Immutable input. |
-| [`CCE_Master_Solution_Specification_INIT26.md`](./CCE_Master_Solution_Specification_INIT26.md) | The 62-section master blueprint. All other docs are derived from it and stay consistent with it. |
+Most portfolio tools solve one of two failure modes and ignore the other:
 
-### Tier 1 — What we are building
-| Doc | Purpose |
+| Failure mode | Cause |
 |---|---|
-| [`01-PRODUCT-SPECIFICATION.md`](./01-PRODUCT-SPECIFICATION.md) | Vision, users, scope, feature set, non-goals, acceptance criteria. |
-| [`03-TRD.md`](./03-TRD.md) | Numbered functional + non-functional requirements, tech stack, budgets, traceability matrix. |
+| **Stale allocation** | Static rules don't adapt when market conditions change |
+| **Unsafe allocation** | A pure optimizer produces a statistically attractive portfolio that violates institutional policy |
 
-### Tier 2 — How it is built
-| Doc | Purpose |
-|---|---|
-| [`02-ARCHITECTURE.md`](./02-ARCHITECTURE.md) | Layers, module map, dependency rules, control-flow, state machine, fail-safe design. |
-| [`04-WORKFLOW.md`](./04-WORKFLOW.md) | The 12-step runtime closed loop, plus the development/agent workflow. |
-| [`06-DATA-CONTRACTS.md`](./06-DATA-CONTRACTS.md) | In-process object contracts and service-layer signatures. The seams between modules. |
-| [`05-BACKEND-SCHEMA.md`](./05-BACKEND-SCHEMA.md) | SQLite DDL, indices, JSON payload shapes, persistence rules. |
+CCE addresses both. It continuously re-evaluates the portfolio *and* refuses to adopt an optimizer output that breaches policy.
 
-### Tier 3 — The domain rules
-| Doc | Purpose |
-|---|---|
-| [`07-RISK-POLICY.md`](./07-RISK-POLICY.md) | GREEN/AMBER/RED thresholds, hard vs soft controls, circuit-breaker triggers, policy file format. |
-| [`08-FINANCIAL-METHODS.md`](./08-FINANCIAL-METHODS.md) | Every formula, convention, parameter default, and numerical-stability rule. |
+## The loop
 
-### Tier 4 — Surface and quality
-| Doc | Purpose |
-|---|---|
-| [`09-UI-SPEC.md`](./09-UI-SPEC.md) | Dashboard pages, components, states, copy rules, colour semantics. |
-| [`10-RULES.md`](./10-RULES.md) | Engineering rules, coding standards, and hard guardrails for humans and AI agents. |
-| [`11-TESTING-STRATEGY.md`](./11-TESTING-STRATEGY.md) | What must be tested, the safety-invariant test suite, definition of done. |
-| [`12-SECURITY.md`](./12-SECURITY.md) | Secrets, input trust boundaries, LLM containment, dependency hygiene. |
-| [`13-EDGE-CASES.md`](./13-EDGE-CASES.md) | Enumerated failure modes and the exact expected behaviour for each. |
+```
+Market Data → Portfolio State → Risk Engine → Detect → Optimize
+    → Validate → Stress Test → Explain → Human Approval
+    → Simulated Rebalance → Audit → (repeat)
+```
 
-### Tier 5 — Delivery
-| Doc | Purpose |
-|---|---|
-| [`14-DEMO-SCRIPT.md`](./14-DEMO-SCRIPT.md) | The 9-stage judge demo, timed, with fallbacks. |
-| [`15-GLOSSARY.md`](./15-GLOSSARY.md) | Financial and system vocabulary. Read this first if finance is not your background. |
-| [`CLAUDE.md`](./CLAUDE.md) | Project constitution for Claude Code. Loaded every session. |
+The optimizer is deliberately **not** the final authority. It generates candidate allocations; a separate control layer independently re-derives every metric and decides whether the candidate is acceptable.
 
 ---
 
-### Tier 6 — Execution
-| Doc | Purpose |
-|---|---|
-| [`IMPLEMENTATION-PLAN.md`](./IMPLEMENTATION-PLAN.md) | The 15-phase one-shot build: a prompt per phase, hour budget, checkpoints, cut lines, and a matrix proving every edge case and invariant is assigned to a phase. |
+## What makes it different
 
-> This folder originally excluded an implementation plan on the principle that it describes *the system*, not *the schedule*. The plan was added later and is the exception: it sequences the existing requirements and introduces none of its own. If it ever disagrees with a Tier 1–4 document, **the other document wins** and the plan is the thing to fix.
+**The control engine cannot import the optimizer.** This is enforced structurally by a test, not by convention:
+
+```python
+def test_controls_never_import_the_optimizer():   # INV-2, structural
+```
+
+The validator recomputes every metric from raw returns rather than reading the optimizer's self-reported numbers. If the optimizer has a bug or the solver is numerically optimistic, that becomes a **rejection**, not an approval — failing in the safe direction.
+
+**Risk contribution, not just weight.** Allocation answers *"how much capital is here?"* Risk contribution answers *"how much of our risk is caused by this?"* These diverge, and the divergence is where institutional risk hides. Measured on real NSE data:
+
+| Asset | Weight | Risk contribution |
+|---|---:|---:|
+| NIFTY50 | 26% | **35.2%** |
+| BANKNIFTY | 20% | 29.6% |
+| GSEC | 12% | **1.2%** |
+| CASH | 6% | 0.0% |
+
+A position can sit comfortably inside its 30% weight cap while causing 43% of portfolio risk. A weight-only control framework cannot see that.
+
+**Safe vs Optimal, shown side by side.** The rejected optimal portfolio isn't hidden — it's the argument, displayed with the specific limits it broke (control, observed value, threshold), never a generic "constraints violated".
+
+**Twelve safety invariants**, each with an ID and a test. Among them: the LLM cannot modify any financial decision; missing market data is never interpreted as zero risk; on optimizer failure the last approved safe allocation is preserved rather than replaced; backtests cannot see the future.
 
 ---
 
-## Document conventions
+## Status
 
-- **MUST / MUST NOT / SHOULD / MAY** carry RFC-2119 weight. `MUST` items are non-negotiable and have a matching test.
-- **`[DEMO-CONFIG]`** marks a value that is a configurable prototype setting, not a claim about real institutional standards.
-- **`[P0] [P1] [P2]`** mark priority, matching master spec §56.
-- **`[INV-n]`** references a safety invariant from `10-RULES.md` §2.
-- **`[FR-n] [NFR-n]`** reference requirements in `03-TRD.md`.
-- Currency is INR. `₹1 Cr = ₹10,000,000`. Default demo portfolio is `₹100 Cr`.
+**Phases 0–3 of 15 complete.** 232 tests passing.
+
+| Phase | Component | Status |
+|---|---|---|
+| 0 | Contracts, config, architecture guards | ✅ |
+| 1 | Data layer, validation, committed cache | ✅ |
+| 2 | Portfolio state, turnover, transaction costs | ✅ |
+| 3 | Risk engine — volatility, EWMA, VaR, CVaR, drawdown, risk contribution | ✅ |
+| 4 | Optimizer (constrained max-Sharpe) | next |
+| 5–7 | Control engine, circuit breaker, stress testing | planned |
+| 8–9 | Audit store, services, approval workflow | planned |
+| 10 | Streamlit dashboard | planned |
+| 11–15 | Alternative optimizers, backtest, LLM narration, demo | planned |
+
+This is an honest status, not a roadmap aspiration. The dashboard does not exist yet.
 
 ---
 
-## Non-negotiable summary
+## Quick start
 
-If you read nothing else, read this:
+Requires Python 3.11+.
 
-1. The **optimizer** and the **control engine** are separate modules. The control engine MUST NOT import the optimizer.
-2. The **LLM** may only turn structured facts into prose. It MUST NOT touch weights, metrics, thresholds, states, or approvals.
-3. **UI contains no financial logic.** Streamlit calls a service layer; the service layer calls the engines.
-4. On any failure — optimizer, data, stress, database — **preserve the Last Approved Safe Allocation**. Never invent one.
-5. **Backtests MUST NOT see the future.** Every rebalance decision uses only data strictly prior to the decision date.
-6. Nothing executes real trades. Approval leads to a **simulated** rebalance.
+```bash
+git clone https://github.com/Adityarane012/CCE.git
+cd CCE
+
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
+.venv/bin/python -m pip install -r requirements.txt           # Unix
+
+.venv/Scripts/python.exe -m pytest -q
+```
+
+**It runs with no network and no API key.** A market-data snapshot is committed to `data/cache/`, which is what makes the demo reproducible and offline-capable.
+
+### Try the risk engine
+
+```python
+from cce.config import load_universe, load_policy
+from cce.data import load_market_data
+from cce.risk import RiskInputs, compute_risk_snapshot
+
+universe, policy = load_universe(), load_policy()
+market, _ = load_market_data(universe)
+
+weights = {"NIFTY50": 0.26, "BANKNIFTY": 0.20, "IT": 0.10, "PHARMA": 0.08,
+           "FMCG": 0.06, "GOLD": 0.10, "GSEC": 0.12, "CORPBOND": 0.02,
+           "CASH": 0.06}
+
+snapshot, cov = compute_risk_snapshot(RiskInputs(
+    weights=weights, universe=universe, market_data=market,
+    risk_free_rate=policy.risk_free_rate,
+    total_value_paise=100_000_000_000,   # ₹100 Cr
+))
+
+print(f"EWMA volatility  {snapshot.ewma_volatility:.2%}")
+print(f"95% CVaR         {snapshot.cvar_95:.2%}")
+print(f"Banking risk     {snapshot.sector_risk_contribution['BANKING']:.1%}")
+```
+
+### Refresh the market data
+
+```bash
+.venv/Scripts/python.exe scripts/build_cache.py --years 3
+```
+
+Needs a network. Prints a `data_hash` — record it when you commit the snapshot.
+
+---
+
+## Architecture
+
+```
+ui/            → may import ONLY cce.services and cce.contracts
+cce/services/  → orchestration; the only layer the UI touches
+cce/risk/      → pure functions; no I/O
+cce/optimizer/ → proposes only; never writes state
+cce/controls/  → INDEPENDENT authority; does NOT import the optimizer
+cce/stress/    → independent gate
+cce/contracts/ → typed seams; imports nothing from cce
+cce/data/      → provider abstraction; cached is the default
+cce/audit/     → append-only SQLite
+```
+
+Layer rules are enforced by `tests/test_architecture.py`, which parses imports across the tree. A violation fails the build rather than being caught in review.
+
+**The Streamlit UI will contain no financial logic.** It calls a service layer; the service layer calls the engines.
+
+---
+
+## Tech stack
+
+Python 3.11 · NumPy · pandas · SciPy · CVXPY · [jugaad-data](https://github.com/jugaad-py/jugaad-data) (NSE/RBI market data) · SQLite · pytest · Streamlit + Plotly (planned)
+
+Dependencies are installed per build phase rather than all at once, so a failed install never blocks an earlier phase. See `requirements.txt`.
+
+---
+
+## Testing
+
+```bash
+.venv/Scripts/python.exe -m pytest -q                        # everything
+.venv/Scripts/python.exe -m pytest tests/test_architecture.py -v   # layer guards
+```
+
+Every financial function has a test with a **hand-computed** expected value — comparing an implementation against itself proves nothing. The suite also asserts identities that must hold by construction:
+
+- `Σ RCᵢ = σₚ` to 1e-12 — a free correctness check on the whole covariance and weight pipeline
+- `CVaR ≥ VaR` across 20 seeds
+- annualisation applied exactly once (a `√252` applied twice is a 15.9× error that still looks like a number)
+
+A cross-check worth noting: `√(w'Σw)` from the covariance matrix and the standard deviation of the portfolio return series both give **9.71%** on the committed data — two entirely independent computational paths agreeing.
+
+---
+
+## What this is not
+
+- Not a retail stock-picking app
+- Not a trading bot or autonomous AI trader
+- Not connected to any brokerage — approval triggers a **simulated** rebalance
+- Not a guaranteed-return or regulatory-compliance product
+
+**The risk thresholds are configurable demonstration values**, not Basel, SEBI or RBI limits, and not calibrated to any institution's risk appetite. They are chosen so a demo portfolio moves between GREEN, AMBER and RED under plausible conditions. What has been built is the configurable control *framework* — that distinction is the point.
+
+Expected returns are labelled **"Model Estimate"** everywhere they appear. They are the least reliable numbers in the system.
+
+---
+
+## Documentation
+
+The full specification set (16 documents covering product spec, architecture, TRD, workflow, data contracts, backend schema, risk policy, financial methods, UI spec, engineering rules, testing strategy, security, edge cases, demo script and glossary) is maintained locally and **excluded from this repository by project decision**.
+
+`docs/CLAUDE.md` — the project constitution — is committed, and is the fastest way to understand the design constraints this codebase operates under.
+
+---
+
+## Licence
+
+Hackathon prototype. Not licensed for production use or real capital allocation.

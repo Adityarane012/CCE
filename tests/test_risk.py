@@ -478,3 +478,78 @@ class TestRiskEngine:
         assert a.portfolio_volatility == b.portfolio_volatility
         assert a.cvar_95 == b.cvar_95
         assert a.risk_contribution == b.risk_contribution
+
+
+class TestRiskInputValidation:
+    """The engine must refuse a weight vector that cannot describe a real book.
+
+    Found by adversarial probing after Phase 3: the engine happily measured
+    weights summing to 0.5 (6.9% vol) and 1.5 (19.0% vol). Neither is wrong
+    arithmetic - both answer the wrong question confidently, which is how a
+    buggy optimizer output would get measured as safe.
+    """
+
+    @pytest.fixture
+    def um(self, real_market):
+        return real_market
+
+    def test_underinvested_rejected(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="must sum to 1.0"):
+            RiskInputs(weights={"NIFTY50": 0.5}, universe=u, market_data=md)
+
+    def test_overinvested_rejected(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="must sum to 1.0"):
+            RiskInputs(weights={"NIFTY50": 1.0, "GOLD": 0.5},
+                       universe=u, market_data=md)
+
+    def test_negative_weight_rejected(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="long-only"):
+            RiskInputs(weights={"NIFTY50": 1.2, "GOLD": -0.2},
+                       universe=u, market_data=md)
+
+    def test_unknown_asset_rejected(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="unknown asset_ids"):
+            RiskInputs(weights={"NOT_AN_ASSET": 1.0}, universe=u, market_data=md)
+
+    def test_empty_rejected(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="is empty"):
+            RiskInputs(weights={}, universe=u, market_data=md)
+
+    def test_current_weights_validated_too(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        with pytest.raises(ValueError, match="current_weights"):
+            RiskInputs(weights={"NIFTY50": 1.0}, universe=u, market_data=md,
+                       current_weights={"NIFTY50": 0.4})
+
+    def test_float_dust_accepted(self, um) -> None:
+        from cce.risk import RiskInputs
+        u, md = um
+        RiskInputs(weights={"NIFTY50": 0.5, "GOLD": 0.5 + 1e-9},
+                   universe=u, market_data=md)
+
+
+def test_liquidity_skips_adv_tier_rather_than_substituting(demo_universe) -> None:
+    """A latent bug found by audit: the engine passed `total_value_paise or 1`,
+    which would have measured liquidation against ONE PAISE of portfolio.
+
+    Harmless only because every adv_paise is currently None. The tier is now
+    SKIPPED explicitly - a stand-in portfolio size would be a fabricated
+    number wearing a real one's clothes.
+    """
+    prof = liquidity_summary(synthetic.healthy_weights(), demo_universe, None)
+    assert all(v is None for v in prof.days_to_liquidate.values())
+    assert prof.adv_coverage == 0.0
+    assert prof.worst_days is None
+    # the Level 1 controls still work without a portfolio size
+    assert prof.liquid_share == pytest.approx(0.88)

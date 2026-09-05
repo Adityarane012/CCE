@@ -81,10 +81,15 @@ class LiquidityProfile:
 def liquidity_summary(
     weights: dict[str, float],
     universe: Universe,
-    total_value_paise: int,
+    total_value_paise: int | None = None,
     participation_rate: float = DEFAULT_PARTICIPATION_RATE,
 ) -> LiquidityProfile:
     """Full liquidity profile.
+
+    ``total_value_paise=None`` SKIPS the ADV-based days-to-liquidate tier
+    entirely. It does not substitute a placeholder value: liquidation
+    measured against a stand-in portfolio size would be a fabricated number
+    wearing a real one's clothes.
 
     ``adv_coverage`` records how much of the portfolio actually had volume
     data. When it is zero the Level 3 control is simply not evaluated, and
@@ -94,9 +99,12 @@ def liquidity_summary(
     covered = 0.0
     for asset_id, w in weights.items():
         asset = universe.get(asset_id)
-        d = days_to_liquidate(
-            int(round(total_value_paise * w)), asset.adv_paise,
-            participation_rate,
+        d = (
+            None if total_value_paise is None
+            else days_to_liquidate(
+                int(round(total_value_paise * w)), asset.adv_paise,
+                participation_rate,
+            )
         )
         days[asset_id] = d
         if d is not None:

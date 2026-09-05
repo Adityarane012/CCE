@@ -14,7 +14,7 @@ directions and both boundaries are tested explicitly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .enums import Comparator, RiskState, Scope
 from .optimization import Constraints

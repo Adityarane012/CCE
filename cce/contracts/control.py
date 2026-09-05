@@ -9,7 +9,7 @@ a bug waiting to diverge (INV-2, INV-10).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from .enums import (

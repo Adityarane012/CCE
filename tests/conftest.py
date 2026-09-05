@@ -22,6 +22,21 @@ def _deterministic() -> None:
     np.random.seed(42)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_settings_cache() -> None:
+    """Clear the settings cache around every test.
+
+    ``get_settings`` is lru_cached, so a test that sets an environment
+    variable would otherwise leak its configuration into every test that
+    ran after it - and the failure would depend on test ORDER, which is the
+    worst kind of flake to diagnose.
+    """
+    from cce.config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def universe():
     return load_universe(PROJECT_ROOT / "config" / "universe.yaml")

@@ -19,14 +19,13 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 import numpy as np
-import pandas as pd
 
 from ..contracts import (
     ExpectedReturnMethod, MarketData, RiskSnapshot, RiskState, Universe,
     VaRMethod,
 )
 from ..portfolio.calculations import (
-    asset_class_exposure, portfolio_returns, sector_exposure, turnover,
+    portfolio_returns, sector_exposure, turnover,
 )
 from .concentration import concentration_summary
 from .covariance import CovarianceReport, estimate_covariance
@@ -46,9 +45,23 @@ logger = logging.getLogger(__name__)
 __all__ = ["RiskInputs", "compute_risk_snapshot", "sharpe_ratio"]
 
 
+WEIGHT_TOLERANCE = 1e-6
+
+
 @dataclass(frozen=True)
 class RiskInputs:
-    """Everything the engine needs. Grouped so callers cannot half-specify."""
+    """Everything the engine needs. Grouped so callers cannot half-specify.
+
+    Validates the weight vector on construction. Without this the engine
+    happily measures a half-invested or over-invested book and returns
+    plausible-looking numbers: weights summing to 0.5 produced a 6.9%
+    volatility, and 1.5 produced 19.0%. Neither is wrong arithmetic — both
+    are the wrong question, answered confidently.
+
+    That is the exact failure mode the project forbids, and it is how a
+    buggy optimizer output would get measured as safe. The engine is a pure
+    function, but a pure function may still refuse nonsense.
+    """
 
     weights: dict[str, float]
     universe: Universe
@@ -62,6 +75,42 @@ class RiskInputs:
     return_method: ExpectedReturnMethod = ExpectedReturnMethod.HISTORICAL
     current_weights: dict[str, float] | None = None
     total_value_paise: int = 0
+
+    def __post_init__(self) -> None:
+        _validate_weights(self.weights, self.universe, "weights")
+        if self.current_weights is not None:
+            _validate_weights(
+                self.current_weights, self.universe, "current_weights"
+            )
+
+
+def _validate_weights(
+    weights: dict[str, float], universe: Universe, label: str
+) -> None:
+    """Reject a weight vector that cannot describe a real portfolio."""
+    if not weights:
+        raise ValueError(f"{label} is empty")
+
+    unknown = set(weights) - set(universe.asset_ids)
+    if unknown:
+        raise ValueError(
+            f"{label} contain unknown asset_ids: {sorted(unknown)}"
+        )
+
+    negative = {a: w for a, w in weights.items() if w < 0}
+    if negative:
+        raise ValueError(
+            f"{label} contain negative positions {negative}; CCE is "
+            f"long-only and short exposure is not modelled"
+        )
+
+    total = sum(weights.values())
+    if abs(total - 1.0) > WEIGHT_TOLERANCE:
+        raise ValueError(
+            f"{label} must sum to 1.0 within {WEIGHT_TOLERANCE}, got "
+            f"{total!r}. Measuring a book that is not fully invested returns "
+            f"a plausible number for the wrong question."
+        )
 
 
 def sharpe_ratio(
@@ -149,8 +198,13 @@ def compute_risk_snapshot(inputs: RiskInputs) -> tuple[RiskSnapshot, CovarianceR
         {a: weights.get(a, 0.0) for a in held}, cov, _restrict(universe, held)
     )
     conc = concentration_summary(weights, universe)
+    # total_value_paise only affects the ADV-based days-to-liquidate tier.
+    # When it is unset, that tier is SKIPPED rather than computed against a
+    # substituted value - a silent `or 1` would have measured liquidation
+    # against one paise of portfolio (docs/08 section 10.2).
     liq = liquidity_summary(
-        weights, universe, inputs.total_value_paise or 1,
+        weights, universe,
+        inputs.total_value_paise if inputs.total_value_paise > 0 else None,
     )
     conc["liquid_share"] = liq.liquid_share
     conc["cash_share"] = liq.cash_share

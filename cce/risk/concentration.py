@@ -15,8 +15,6 @@ limits alone are gameable by a sufficiently determined objective function.
 
 from __future__ import annotations
 
-import numpy as np
-
 from ..contracts import Universe
 
 __all__ = [

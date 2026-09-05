@@ -13,8 +13,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-import pandas as pd
-
 from ..contracts import (
     PAISE_PER_CRORE, MarketData, PortfolioState, Position, Universe,
 )
