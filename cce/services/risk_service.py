@@ -9,7 +9,13 @@ verdict. Classification happens in exactly one place, and it is not this one
 
 from __future__ import annotations
 
-from cce.contracts import PortfolioState, RiskChange, RiskSnapshot
+from cce.contracts import (
+    ChangeAttribution,
+    ChangeDriver,
+    PortfolioState,
+    RiskChange,
+    RiskSnapshot,
+)
 from cce.risk import RiskInputs, compute_risk_snapshot
 
 from .context import ServiceContext
@@ -88,3 +94,52 @@ class RiskService:
                 to_value=float(after), scope=sector,
             ))
         return tuple(sorted(changes, key=lambda c: abs(c.delta), reverse=True))
+
+    def attribute(
+        self,
+        previous: RiskSnapshot,
+        current: RiskSnapshot,
+        previous_weights: dict[str, float],
+        current_weights: dict[str, float],
+        weight_tolerance: float = 0.01,
+    ) -> ChangeAttribution:
+        """Decompose a risk move into allocation drift vs regime change.
+
+        This is the question the "What Changed?" panel exists to answer, and
+        the two answers call for opposite responses. If the weights moved,
+        the book was traded and the risk followed. If they did not, the
+        market moved underneath an unchanged book — rebalancing is a
+        response to the first and a reaction to the second.
+
+        The demo case is exactly this: banking allocation unchanged at 24%
+        while its risk contribution moves 27% -> 41%. A panel reporting only
+        "volatility is up" leaves the reader to guess which happened.
+
+        ``weight_tolerance`` is a MATERIALITY floor, not a policy threshold:
+        a 0.3% drift from rounding is not a rebalance, and calling it one
+        would attribute a regime change to a trade nobody made.
+        """
+        shift = max(
+            (
+                abs(current_weights.get(a, 0.0) - previous_weights.get(a, 0.0))
+                for a in set(previous_weights) | set(current_weights)
+            ),
+            default=0.0,
+        )
+        metrics = self.what_changed(previous, current)
+        contributors = self.sector_contributions_changed(previous, current)
+
+        moved = shift > weight_tolerance
+        if not metrics and not contributors:
+            driver = ChangeDriver.NONE
+        elif moved and contributors:
+            driver = ChangeDriver.BOTH
+        elif moved:
+            driver = ChangeDriver.ALLOCATION
+        else:
+            driver = ChangeDriver.REGIME
+
+        return ChangeAttribution(
+            driver=driver, metrics=metrics, contributors=contributors,
+            max_weight_shift=shift, weight_shift_threshold=weight_tolerance,
+        )

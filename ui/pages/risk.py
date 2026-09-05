@@ -13,7 +13,8 @@ import streamlit as st
 from cce.contracts import RiskState
 from ui.components.format import DASH, pct
 from ui.components.indicators import degraded_marker, state_chip
-from ui.state import Services
+from ui.components.what_changed import render_what_changed
+from ui.state import Services, session
 
 
 def render(svc: Services) -> None:
@@ -39,6 +40,10 @@ def render(svc: Services) -> None:
         "control."
     )
     degraded_marker(snapshot.degraded_reason)
+
+    previous = session().get("last_snapshot")
+    prev_weights = session().get("last_weights") or state.weights
+    render_what_changed(svc, previous, snapshot, prev_weights, state.weights)
 
     _breaker_panel(snapshot)
     _control_table(snapshot)

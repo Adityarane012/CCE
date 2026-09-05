@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from cce.contracts import Explanation, NarratedExplanation, RiskChange
 
-__all__ = ["build_narrated_explanation", "render_narrative"]
+__all__ = [
+    "build_narrated_explanation",
+    "render_change_interpretation",
+    "render_narrative",
+]
 
 # How a control verdict reads in a sentence. Keyed by ControlStatus.value.
 _VERDICT: dict[str, str] = {
@@ -132,3 +136,54 @@ def build_narrated_explanation(
         llm_model=llm_model,
         llm_error=llm_error,
     )
+
+
+#: One sentence per driver. Deterministic, and the only place this
+#: interpretation is written — not in the UI, and not by an LLM
+#: (docs/09-UI-SPEC.md section 10).
+_DRIVER_PROSE: dict[str, str] = {
+    "REGIME": (
+        "Allocation did not materially change, but market conditions moved "
+        "underneath it — the risk shifted without a trade."
+    ),
+    "ALLOCATION": (
+        "The book was traded, and the risk moved with it."
+    ),
+    "BOTH": (
+        "The book was traded AND market conditions moved. Both contributed, "
+        "so a rebalance alone will not account for the change."
+    ),
+    "NONE": "No material change since the previous reading.",
+}
+
+
+def render_change_interpretation(attribution) -> str:
+    """Explain a risk move in one paragraph.
+
+    Deterministic, and derived only from the attribution the service
+    computed. The UI renders this string; it never assembles the sentence
+    itself, so the interpretation cannot drift between two pages that show
+    the same numbers.
+    """
+    lines = [_DRIVER_PROSE.get(attribution.driver.value, _DRIVER_PROSE["NONE"])]
+
+    headline = attribution.headline
+    if headline is not None:
+        lines.append(
+            f"{headline.metric} moved from {_pct(headline.from_value)} to "
+            f"{_pct(headline.to_value)} ({headline.delta:+.2%})."
+        )
+
+    worst = attribution.contributors[0] if attribution.contributors else None
+    if worst is not None:
+        lines.append(
+            f"The largest shift in risk contribution was {worst.scope}, "
+            f"from {_pct(worst.from_value)} to {_pct(worst.to_value)}."
+        )
+
+    if attribution.driver.value == "REGIME" and worst is not None:
+        lines.append(
+            f"{worst.scope}'s share of the book is unchanged; its share of "
+            "the RISK is not."
+        )
+    return " ".join(lines)

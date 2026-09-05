@@ -14,10 +14,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from enum import Enum
 
 from .enums import Comparator, ExpectedReturnMethod, RiskState, Scope, VaRMethod
 
-__all__ = ["Breach", "RiskChange", "RiskSnapshot"]
+__all__ = ["Breach", "ChangeAttribution", "ChangeDriver", "RiskChange", "RiskSnapshot"]
 
 
 @dataclass(frozen=True)
@@ -120,3 +121,44 @@ class RiskSnapshot:
     @property
     def warnings(self) -> tuple[Breach, ...]:
         return tuple(b for b in self.breaches if b.severity is RiskState.AMBER)
+
+
+class ChangeDriver(str, Enum):
+    """What actually moved the risk between two snapshots.
+
+    The distinction the "What Changed?" panel exists to make. A portfolio
+    whose weights are untouched but whose risk rose has a REGIME problem;
+    one whose weights moved has an ALLOCATION problem. They call for
+    opposite responses — rebalance, or reassess the model — and a panel that
+    only says "volatility is up" leaves the reader to guess which.
+    """
+
+    ALLOCATION = "ALLOCATION"   # the book was traded
+    REGIME = "REGIME"           # the market moved under an unchanged book
+    BOTH = "BOTH"
+    NONE = "NONE"
+
+
+@dataclass(frozen=True)
+class ChangeAttribution:
+    """Why the risk moved, decomposed.
+
+    Built by the service from two snapshots and the two weight vectors. The
+    prose that describes it is rendered by the deterministic narrator, never
+    assembled in the UI and never written by an LLM (docs/09 section 10).
+    """
+
+    driver: ChangeDriver
+    metrics: tuple[RiskChange, ...] = ()
+    contributors: tuple[RiskChange, ...] = ()
+    max_weight_shift: float = 0.0
+    weight_shift_threshold: float = 0.01
+
+    @property
+    def allocation_moved(self) -> bool:
+        return self.max_weight_shift > self.weight_shift_threshold
+
+    @property
+    def headline(self) -> RiskChange | None:
+        """The metric that moved most, in absolute terms."""
+        return max(self.metrics, key=lambda c: abs(c.delta), default=None)

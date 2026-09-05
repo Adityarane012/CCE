@@ -61,7 +61,13 @@ from .portfolio import (
     PortfolioState,
     Position,
 )
-from .risk import Breach, RiskChange, RiskSnapshot
+from .risk import (
+    Breach,
+    ChangeAttribution,
+    ChangeDriver,
+    RiskChange,
+    RiskSnapshot,
+)
 
 __all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     # enums
@@ -75,7 +81,7 @@ __all__ = [  # noqa: RUF022 - grouped by contract family, not alphabetically
     "Position", "PortfolioState", "WEIGHT_TOLERANCE", "PAISE_PER_RUPEE",
     "PAISE_PER_CRORE",
     # risk
-    "Breach", "RiskSnapshot", "RiskChange",
+    "Breach", "RiskSnapshot", "RiskChange", "ChangeAttribution", "ChangeDriver",
     # optimization / control
     "Constraints", "OptimizationResult", "ControlResult", "StressResult",
     "Candidate", "Alert", "Scenario", "LIQUIDITY_KEY",

@@ -23,6 +23,7 @@ from cce.audit import AuditRepository, get_connection, run_migrations
 from cce.config import load_universe
 from cce.contracts import (
     CandidateRole,
+    ChangeDriver,
     ControlStatus,
     DataProvider,
     HumanAction,
@@ -596,3 +597,89 @@ class TestTheDemoPortfolioIsWhatEveryDocumentClaims:
     def test_the_seed_weights_sum_to_one(self, ctx):
         state = PortfolioService(ctx).get_current_state()
         assert sum(state.weights.values()) == pytest.approx(1.0)
+
+
+class TestWhatChanged:
+    """docs/09-UI-SPEC.md section 10: separate allocation drift from a
+    volatility regime change.
+
+    They call for opposite responses — rebalance, or reassess — and a panel
+    reporting only "volatility is up" leaves the reader to guess which.
+    """
+
+    def test_what_changed_isolates_allocation_from_regime(self, ctx, state):
+        """The demo case: weights untouched, risk contribution moves.
+
+        Banking allocation unchanged at 24% while its risk contribution goes
+        27% -> 41%. The driver must be named as REGIME, not allocation.
+        """
+        service = RiskService(ctx)
+        current = service.get_snapshot(state)
+        previous = replace(
+            current,
+            ewma_volatility=(current.ewma_volatility or 0.10) / 2,
+            sector_risk_contribution={
+                k: v / 2 for k, v in current.sector_risk_contribution.items()
+            },
+        )
+        attribution = service.attribute(
+            previous, current, state.weights, state.weights  # identical weights
+        )
+        assert attribution.driver is ChangeDriver.REGIME
+        assert not attribution.allocation_moved
+        assert attribution.max_weight_shift == 0.0
+
+    def test_a_traded_book_is_attributed_to_allocation(self, ctx, state):
+        service = RiskService(ctx)
+        current = service.get_snapshot(state)
+        previous = replace(
+            current, ewma_volatility=(current.ewma_volatility or 0.10) / 2
+        )
+        moved = dict(state.weights)
+        first, second = sorted(moved)[:2]
+        moved[first] = moved[first] + 0.10
+        moved[second] = moved[second] - 0.10
+
+        attribution = service.attribute(previous, current, state.weights, moved)
+        assert attribution.driver in (ChangeDriver.ALLOCATION, ChangeDriver.BOTH)
+        assert attribution.allocation_moved
+        assert attribution.max_weight_shift == pytest.approx(0.10)
+
+    def test_rounding_drift_is_not_reported_as_a_rebalance(self, ctx, state):
+        """The materiality floor. A 0.3% drift is not a trade."""
+        service = RiskService(ctx)
+        current = service.get_snapshot(state)
+        previous = replace(
+            current, ewma_volatility=(current.ewma_volatility or 0.10) / 2
+        )
+        drifted = dict(state.weights)
+        first = sorted(drifted)[0]
+        drifted[first] = drifted[first] + 0.003
+
+        attribution = service.attribute(previous, current, state.weights, drifted)
+        assert not attribution.allocation_moved
+        assert attribution.driver is ChangeDriver.REGIME
+
+    def test_no_change_is_reported_as_none(self, ctx, state):
+        service = RiskService(ctx)
+        current = service.get_snapshot(state)
+        attribution = service.attribute(
+            current, current, state.weights, state.weights
+        )
+        assert attribution.driver is ChangeDriver.NONE
+
+    def test_the_interpretation_comes_from_the_narrator(self, ctx, state):
+        """Not assembled in the UI, and not written by an LLM."""
+        from cce.decisions import render_change_interpretation
+
+        service = RiskService(ctx)
+        current = service.get_snapshot(state)
+        previous = replace(
+            current, ewma_volatility=(current.ewma_volatility or 0.10) / 2
+        )
+        attribution = service.attribute(
+            previous, current, state.weights, state.weights
+        )
+        text = render_change_interpretation(attribution)
+        assert "did not materially change" in text
+        assert text == render_change_interpretation(attribution)  # deterministic

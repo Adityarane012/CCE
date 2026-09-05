@@ -23,6 +23,7 @@ from ui.components.indicators import (
     model_estimate,
     state_chip,
 )
+from ui.components.what_changed import render_what_changed
 from ui.state import Services, session
 
 
@@ -42,11 +43,14 @@ def render(svc: Services) -> None:
         return
 
     previous = session().get("last_snapshot")
+    prev_weights = session().get("last_weights") or state.weights
     session()["last_snapshot"] = snapshot
+    session()["last_weights"] = dict(state.weights)
 
     _state_banner(snapshot)
     _metrics(snapshot, state, previous)
     _breaches(snapshot)
+    render_what_changed(svc, previous, snapshot, prev_weights, state.weights)
     _action_block(snapshot)
 
 
