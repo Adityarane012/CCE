@@ -40,13 +40,16 @@ from cce.contracts import (
     Constraints,
     ControlStatus,
     ExpectedReturnMethod,
+    NarratedExplanation,
     OptimizationResult,
     PortfolioState,
+    RiskChange,
     SolverStatus,
     Strategy,
     TriggerType,
 )
 from cce.controls import evaluate_breaker, generate_recovery_candidates, validate
+from cce.decisions import build_explanation, build_narrated_explanation
 from cce.optimizer import (
     MaxSharpeOptimizer,
     MinVolatilityOptimizer,
@@ -272,6 +275,13 @@ class OptimizationService:
             for event in self._events(safe, outcome, recovery, trigger_detail):
                 self._ctx.repo.record_event(decision_id, event)
 
+            narrated = self._explain(
+                safe, unconstrained, outcome, recovery, strategy, trigger_detail
+            )
+            self._ctx.repo.record_explanation(
+                decision_id, narrated.structured, narrated.template_text
+            )
+
             if recommended is not None:
                 recommended_id = candidate_ids.get(recommended.value)
                 if recommended_id is not None:
@@ -429,6 +439,115 @@ class OptimizationService:
             if cand.eligible_for_approval:
                 return cand.role
         return None
+
+
+    def _explain(
+        self,
+        safe: Candidate,
+        unconstrained: Candidate,
+        outcome,
+        recovery: tuple[Candidate, ...],
+        strategy: Strategy,
+        trigger_detail: str | None,
+    ) -> NarratedExplanation:
+        """Build the structured Explanation and render it to prose.
+
+        The Explanation is the SOURCE OF TRUTH for all narrative output
+        (FR-141): nothing downstream may state a fact it does not contain.
+        Every field here comes from a value an engine already computed — this
+        assembles, it does not derive.
+
+        The prose is produced by the deterministic narrator, which is the
+        SHIPPING DEFAULT (FR-142). It is complete with no LLM present and no
+        API key configured; the LLM, when there is one, replaces the display
+        text and never this object.
+        """
+        recomputed = safe.control.recomputed if safe.control else None
+
+        # The controls that actually moved, worst first — the "why", not
+        # every finding.
+        #
+        # MODEL_* and DATA_* are excluded deliberately. They are validity and
+        # integrity controls whose observed value is a flag, not a rate, so
+        # rendering one as a movement produces "Covariance validity rose from
+        # 0.0% to 100.0%" — true, meaningless, and the first line a reader
+        # sees. Their failures still appear in `reasons`, which is where a
+        # model problem belongs.
+        contributors: list[RiskChange] = []
+        if safe.control is not None:
+            movable = [
+                b for b in safe.control.findings
+                if not b.control_code.startswith(("MODEL_", "DATA_"))
+            ]
+            for breach in sorted(
+                movable, key=lambda b: b.observed - b.threshold, reverse=True
+            )[:3]:
+                contributors.append(RiskChange(
+                    metric=breach.control_label,
+                    from_value=breach.threshold,
+                    to_value=breach.observed,
+                    scope=breach.scope,
+                ))
+
+        if safe.eligible_for_approval:
+            action = (
+                "Proposal passed independent validation and stress testing. "
+                "Awaiting human approval — nothing is adopted automatically."
+            )
+        elif outcome.tripped:
+            action = (
+                "Circuit breaker tripped. The Last Approved Safe Allocation is "
+                "retained"
+                + (f" and {len(recovery)} recovery allocation(s) were generated."
+                   if recovery else " and no recovery allocation qualified.")
+            )
+        else:
+            action = (
+                "Proposal rejected by the independent control engine. The "
+                "current allocation is unchanged."
+            )
+
+        improvement = None
+        if (
+            safe.eligible_for_approval
+            and safe.optimization.sharpe is not None
+            and recomputed is not None
+            and recomputed.sharpe is not None
+        ):
+            improvement = (
+                f"Sharpe {recomputed.sharpe:.2f} on the proposal, against "
+                f"{unconstrained.optimization.sharpe:.2f} for the "
+                "unconstrained optimum that was rejected."
+                if unconstrained.optimization.sharpe is not None else None
+            )
+
+        expl = build_explanation(
+            trigger=trigger_detail or "Decision cycle requested",
+            risk_change=None,
+            main_contributors=tuple(contributors),
+            optimizer=strategy,
+            candidate_summary=dict(safe.optimization.weights or {}),
+            control_status=(
+                safe.control.status if safe.control else ControlStatus.NOT_VALIDATED
+            ),
+            reasons=safe.rejection_reasons or (
+                ("Every hard control and every stress scenario passed.",)
+                if safe.eligible_for_approval else ()
+            ),
+            stress_summary=tuple(
+                f"{s.scenario_label}: "
+                + (
+                    f"loss {s.portfolio_loss:.1%} against a "
+                    f"{s.loss_threshold:.1%} limit"
+                    if s.loss_is_measured
+                    else f"no verdict ({s.error_reason})"
+                )
+                for s in safe.stress
+            ),
+            action=action,
+            expected_improvement=improvement,
+        )
+        return build_narrated_explanation(expl)
 
     def _events(self, safe, outcome, recovery, trigger_detail):
         seq = 0

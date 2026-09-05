@@ -91,6 +91,7 @@ def render(svc: Services) -> None:
         return
 
     _three_columns(svc, state, cycle)
+    _explanation(svc, cycle)
     _recovery(svc, state, cycle)
     _trade_list(svc, state, cycle)
 
@@ -288,6 +289,30 @@ def _act(svc, state, cycle, cand, action: HumanAction, **kw) -> None:
     except CCEError as exc:
         s["error"] = str(exc)
         st.error(str(exc), icon="⚠")
+
+
+def _explanation(svc, cycle) -> None:
+    """The decision, in prose (FR-140..FR-142).
+
+    Written by the deterministic narrator from the structured Explanation.
+    Complete with no LLM present and no API key configured — the LLM, when
+    there is one, replaces this text for DISPLAY and never the decision
+    behind it (INV-1).
+    """
+    try:
+        stored = svc.replay.get_decision(cycle.decision_id)
+    except LookupError:
+        return
+    if not stored.template_text:
+        return
+
+    st.divider()
+    st.subheader("What the system decided, and why")
+    st.markdown(stored.template_text)
+    st.caption(
+        "Generated from the structured decision record. Nothing here states "
+        "a fact the record does not contain."
+    )
 
 
 def _recovery(svc, state, cycle) -> None:

@@ -523,3 +523,50 @@ class TestReplayService:
     def test_an_unrecorded_decision_has_an_empty_timeline(self, ctx):
         """INV-6: empty means nothing was recorded, not that nothing happened."""
         assert ReplayService(ctx).get_timeline(1) == ()
+
+
+class TestDecisionExplanation:
+    """FR-140..FR-142: every decision carries a structured explanation and
+    complete prose, with no LLM present."""
+
+    def test_a_cycle_records_an_explanation(self, ctx, cycle):
+        stored = ReplayService(ctx).get_decision(cycle.decision_id)
+        assert stored.structured_explanation is not None, (
+            "the decision has no structured explanation (FR-140)"
+        )
+        assert stored.template_text, (
+            "the decision has no deterministic prose (FR-142)"
+        )
+        assert stored.llm_text is None, "no LLM is configured in tests"
+
+    def test_the_explanation_carries_all_nine_fields(self, ctx, cycle):
+        stored = ReplayService(ctx).get_decision(cycle.decision_id)
+        expl = stored.structured_explanation
+        for field in (
+            "trigger", "risk_change", "main_contributors", "optimizer",
+            "candidate_summary", "control_result", "reasons",
+            "stress_summary", "action",
+        ):
+            assert field in expl, f"Explanation is missing {field} (FR-140)"
+
+    def test_the_prose_states_the_verdict_and_the_action(self, ctx, cycle):
+        stored = ReplayService(ctx).get_decision(cycle.decision_id)
+        text = stored.template_text
+        assert "**Control verdict.**" in text
+        assert "**Action.**" in text
+        assert "Model Estimate" in text, (
+            "expected returns must be labelled wherever they appear (FR-062)"
+        )
+
+    def test_validity_controls_are_not_rendered_as_movements(self, ctx, cycle):
+        """A flag is not a rate.
+
+        MODEL_COVARIANCE observed=0/threshold=1 rendered as "Covariance
+        validity rose from 0.0% to 100.0%" — true, meaningless, and the first
+        line a reader saw. Model and data findings belong in `reasons`.
+        """
+        stored = ReplayService(ctx).get_decision(cycle.decision_id)
+        for rc in stored.structured_explanation["main_contributors"]:
+            assert "validity" not in rc["metric"].lower(), (
+                f"a validity control leaked into main_contributors: {rc}"
+            )
