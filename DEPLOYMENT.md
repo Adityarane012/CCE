@@ -35,7 +35,7 @@ Free, no card, purpose-built for exactly this. About five minutes.
    | Repository | `Adityarane012/CCE` |
    | Branch | `main` |
    | Main file path | `app.py` |
-   | App URL | `cce-init26` (or whatever is free) |
+   | App URL | `capitalcontrol-engine` |
 
 4. Open **Advanced settings** and set **Python version to 3.11**. Do not skip
    this — `requirements.txt` pins `numpy==2.4.6` and `pandas==3.0.5`, and a
@@ -123,12 +123,12 @@ and `installCommand` to `null` so nothing is detected, installed or built, and
 
 ### Point it at your live app
 
-`web/index.html` links to `https://cce-init26.streamlit.app`. **Change that to
+`web/index.html` links to `https://capitalcontrol-engine.streamlit.app`. **Change that to
 whatever URL Streamlit actually gave you** — it appears twice, in the hero
 button (`id="app"`):
 
 ```bash
-sed -i 's|https://cce-init26.streamlit.app|https://YOUR-APP.streamlit.app|g' web/index.html
+sed -i 's|https://capitalcontrol-engine.streamlit.app|https://YOUR-APP.streamlit.app|g' web/index.html
 ```
 
 Then commit and push; Vercel redeploys on push.
