@@ -92,7 +92,6 @@ def main() -> int:
         print("\n  MISSING SCREENSHOTS — placeholders drawn instead:")
         for name in missing:
             print(f"    {name}")
-    print("\n  TEAM NAME is a placeholder on slide 1. Fill it before submitting.")
     return 0
 
 
@@ -167,7 +166,7 @@ def _title(slide) -> None:
             "Automate capital allocation while independently enforcing risk "
             "control"
         ),
-        "TEAM NAME": "[ TEAM NAME ]",
+        "TEAM NAME": "Qoders",
         "IDEA TITLE": "CCE — Capital Control Engine",
     }
 
@@ -430,6 +429,24 @@ PANELS = [
 ]
 
 
+def _find(name: str):
+    """Locate a screenshot, tolerating stray spaces in the filename.
+
+    Screenshots are hand-captured and land here with whatever name the OS
+    dialog produced — "port2 .png" cost one silent placeholder before this
+    existed. Matching on the squeezed stem is cheaper than asking someone to
+    rename files under time pressure.
+    """
+    want = name.replace(" ", "").lower()
+    exact = SHOTS / name
+    if exact.exists():
+        return exact
+    for candidate in SHOTS.glob("*"):
+        if candidate.name.replace(" ", "").lower() == want:
+            return candidate
+    return None
+
+
 def _snapshots(slide) -> list[str]:
     from PIL import Image
 
@@ -458,8 +475,8 @@ def _snapshots(slide) -> list[str]:
         x = LEFT + col * (cell_w + gap_x)
         y = origin_y + row * (cell_h + gap_y)
 
-        src = SHOTS / name
-        if not src.exists():
+        src = _find(name)
+        if src is None:
             missing.append(name)
             ph = _box(slide, x, y, cell_w, Inches(0.6))
             _p(ph, f"[ {name} — not found in 'website images/' ]",
