@@ -50,9 +50,34 @@ network — that is a deliberate property, not a limitation (`FR-146`).
 | Symptom | Cause | Fix |
 |---|---|---|
 | `cvxpy` wheel build fails | No compiler on the builder | It has prebuilt wheels for 3.11; confirm the Python version is 3.11, not 3.13 |
-| `jugaad-data` install fails | It installs from a pinned git commit, not PyPI | Confirm the builder has network at install time; the pin is deliberate (`NFR-012`) |
+| `jugaad-data` install fails | It installs from a pinned git commit, not PyPI — the most fragile step in the build | **Comment that line out of `requirements.txt` and redeploy.** See below: it is not a runtime dependency |
 | App starts, then "no market data" | `data/cache/prices.parquet` missing | Confirm it is committed — `git ls-files data/cache/` must list it |
 | Blank page after a click | An exception being swallowed | `showErrorDetails` is on in `.streamlit/config.toml`; the real message will render |
+
+### If `jugaad-data` blocks the build, delete it
+
+It installs from a pinned git commit rather than PyPI, which makes it the one
+line most likely to fail on a cloud builder. **The deployed app never imports
+it.** `cce/data/jugaad_provider.py` imports `jugaad_data` lazily, inside the
+methods that fetch live prices, and the demo runs on `CachedDataProvider`
+against the committed parquet snapshot.
+
+Verified by blocking the import entirely and running a full decision cycle:
+
+```
+WITH jugaad-data ABSENT:
+  provider     CACHED
+  portfolio    100.0 Cr
+  risk state   GREEN   vol 10.35%
+  OPTIMAL      approvable=False
+  SAFE         approvable=True
+```
+
+So if the build fails on that line, comment it out and redeploy. What you lose
+is `CCE_DATA_PROVIDER=live` and `scripts/build_cache.py` — neither is used by
+the demo, and both still work locally where the full `requirements.txt` is
+installed. It stays in the file because that file is the reproducible
+development environment (`NFR-012`), not the minimum runtime.
 
 ### What to expect at runtime
 
