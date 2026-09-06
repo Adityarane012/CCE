@@ -16,6 +16,13 @@
 # ── Deployment ───────────────────────────────────────────────
 .vercel/
 
+# ── Working screenshots ──────────────────────────────────────
+# Demo captures for the deck. Kept out of the repo: they are large,
+# they go stale the moment a threshold moves, and the README/pitch page
+# already carry the numbers. Anything a reader needs to SEE should be
+# reproducible by running the app, not pinned as a PNG.
+website images/
+
 # ── Secrets ──────────────────────────────────────────────────
 .env
 .env.*

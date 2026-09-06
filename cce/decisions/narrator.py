@@ -47,6 +47,21 @@ def _describe_change(rc: RiskChange) -> str:
     )
 
 
+def _describe_exceedance(b) -> str:
+    """One breached control, stated as an exceedance — never as a movement.
+
+    "observed X against a Y limit" rather than "rose from Y to X". The
+    threshold is a limit the candidate crossed, not a value it used to hold,
+    and prose that implies otherwise is fabricating a reading.
+    """
+    direction = "above" if b.observed > b.threshold else "below"
+    gap = abs(b.observed - b.threshold)
+    return (
+        f"{b.control_label} {_pct(b.observed)}, {direction} its "
+        f"{_pct(b.threshold)} limit by {gap * 100:.2f}pp"
+    )
+
+
 def render_narrative(expl: Explanation) -> str:
     """Render an :class:`Explanation` to prose. Deterministic and total.
 
@@ -73,6 +88,12 @@ def render_narrative(expl: Explanation) -> str:
             f"{rc.scope} — {_describe_change(rc)}" for rc in expl.main_contributors
         )
         lines.append(f"**Main contributors.** {contributors}.")
+
+    if expl.main_exceedances:
+        worst = "; ".join(
+            f"{b.scope} — {_describe_exceedance(b)}" for b in expl.main_exceedances
+        )
+        lines.append(f"**Limits crossed.** {worst}.")
 
     # --- what was proposed -------------------------------------------------
     if expl.optimizer is not None:

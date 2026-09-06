@@ -119,6 +119,12 @@ def _prompt(explanation: Explanation) -> str:
             f"Risk change: {rc.metric} {rc.from_value:.4f} -> {rc.to_value:.4f} "
             f"(scope {rc.scope})"
         )
+    for breach in explanation.main_exceedances:
+        lines.append(
+            f"Limit crossed: {breach.scope} {breach.control_label} "
+            f"observed {breach.observed:.4f} against a {breach.threshold:.4f} "
+            f"limit (this is a LIMIT, not a previous value)"
+        )
     for contributor in explanation.main_contributors:
         lines.append(
             f"Contributor: {contributor.scope} {contributor.metric} "

@@ -439,3 +439,65 @@ def test_settings_repr_never_leaks_the_api_key(monkeypatch) -> None:
     assert "sk-super-secret-value" not in repr(s)
     assert "<set>" in repr(s)
     get_settings.cache_clear()
+
+
+class TestExplanationNeverInventsAPriorValue:
+    """A threshold is not a previous reading.
+
+    Breaches were packed into ``RiskChange(from_value=threshold,
+    to_value=observed)``, so the narrator produced "Asset risk contribution
+    (GOLD) rose from 40.00% to 47.14%". Gold's risk contribution was never
+    40% — that is the RED limit. The sentence fabricates a measurement, in
+    the headline line of a risk tool's explanation.
+    """
+
+    def _breach(self):
+        from cce.contracts import Breach, Comparator, RiskState
+
+        return Breach(
+            control_code="RC_ASSET_MAX",
+            control_label="Asset risk contribution (GOLD)",
+            severity=RiskState.RED,
+            is_hard=True,
+            observed=0.4714,
+            threshold=0.40,
+            comparator=Comparator.GT,
+            scope="GOLD",
+            message="Asset risk contribution (GOLD) 47.14% exceeds the RED limit of 40.00%",
+        )
+
+    def test_a_breach_is_narrated_as_an_exceedance_not_a_movement(self):
+        from cce.contracts import ControlStatus
+        from cce.decisions.explanation import build_explanation
+        from cce.decisions.narrator import render_narrative
+
+        expl = build_explanation(
+            trigger="MAX_SHARPE requested from the dashboard",
+            risk_change=None,
+            main_contributors=(),
+            optimizer=None,
+            candidate_summary={"GOLD": 0.25},
+            control_status=ControlStatus.FAILED,
+            reasons=("Asset risk contribution (GOLD) 47.14% exceeds the RED limit",),
+            stress_summary=(),
+            action="Circuit breaker tripped.",
+            main_exceedances=(self._breach(),),
+        )
+        text = render_narrative(expl)
+
+        assert "rose from 40" not in text and "rose from 40.00%" not in text, (
+            "the RED limit is being narrated as a previous value:\n" + text
+        )
+        assert "47.14%" in text, "the observed value must still appear"
+        assert "limit" in text.lower(), "the threshold must be named as a limit"
+
+    def test_contributors_are_not_populated_from_breaches(self, ):
+        """The service must not smuggle breaches back into main_contributors."""
+        import inspect
+
+        from cce.services import optimization_service
+
+        src = inspect.getsource(optimization_service)
+        assert "from_value=breach.threshold" not in src, (
+            "a threshold is being written into RiskChange.from_value again"
+        )

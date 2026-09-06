@@ -109,7 +109,7 @@ Gold:           +5%
 
 ## 3. Stage 3 — Allocation is not risk (1:30–2:15)
 
-**Screen:** Risk Control Center
+**Screen:** Portfolio & Exposure
 
 **Say:**
 > "This is the chart I'd want you to remember.
@@ -120,7 +120,9 @@ Gold:           +5%
 >
 > A tool that only watches allocation percentages cannot see this. Every control in CCE is evaluated on risk contribution as well as weight, which is why a portfolio can be inside every allocation cap and still be refused."
 
-**Show:** the weight-vs-risk-contribution bar chart. This is the strongest single visual in the product — let it sit on screen for a beat.
+**Show:** the weight-vs-risk-contribution bar chart, third component down on **Portfolio & Exposure** (`docs/09-UI-SPEC.md` §5, component 3). This is the strongest single visual in the product — let it sit on screen for a beat.
+
+*It is NOT on the Risk Control Center. An earlier draft of this script sent the presenter there, where they would have found a metrics table and no chart. The Risk Control Center is where the control STATES live; Portfolio & Exposure is where the exposure visuals live.*
 
 *All measured. The earlier version of this script claimed a before/after volatility jump (11.8% → 15.6%) driven by the shock. That is not something this system does: the stress engine measures a scenario's loss, it does not re-estimate live risk from shocked returns. The claim was removed rather than staged — see `13-EDGE-CASES.md`. If a judge asks "what would move these numbers?", the honest answer is a new trading day, or the EWMA estimator reacting to a regime change, and you can show EWMA against historical volatility side by side.*
 

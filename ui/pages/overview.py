@@ -80,12 +80,19 @@ def _metrics(snapshot, state, previous) -> None:
     with c2:
         model_estimate()
 
+    # Only show a delta when the DISPLAYED values differ. Comparing the raw
+    # floats is not enough: 7.548% and 7.551% both render as "7.5%", and the
+    # badge then read "from 7.5%" beside a headline of "7.5%" — onto which
+    # Streamlit prepends its own arrow, so a metric that had not visibly moved
+    # appeared to have risen.
     prev_vol = previous.ewma_volatility if previous else None
+    shown, prev_shown = pct(snapshot.ewma_volatility), pct(prev_vol)
+    moved = prev_vol is not None and prev_shown != shown
     c3.metric(
-        "EWMA volatility", pct(snapshot.ewma_volatility),
+        "EWMA volatility", shown,
         delta=(
-            f"{arrow(prev_vol, snapshot.ewma_volatility)} "
-            f"from {pct(prev_vol)}" if prev_vol is not None else None
+            f"{arrow(prev_vol, snapshot.ewma_volatility)} from {prev_shown}"
+            if moved else None
         ),
         delta_color="off",
     )

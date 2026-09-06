@@ -392,6 +392,17 @@ class AuditRepository:
                 "main_contributors": [
                     _risk_change_dict(rc) for rc in expl.main_contributors
                 ],
+                "main_exceedances": [
+                    {
+                        "control_code": b.control_code,
+                        "control_label": b.control_label,
+                        "observed": b.observed,
+                        "threshold": b.threshold,
+                        "scope": b.scope,
+                        "severity": b.severity.value,
+                    }
+                    for b in expl.main_exceedances
+                ],
                 "optimizer": expl.optimizer.value if expl.optimizer else None,
                 "candidate_summary": expl.candidate_summary,
                 "control_result": expl.control_result,

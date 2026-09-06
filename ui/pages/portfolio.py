@@ -126,4 +126,24 @@ def _positions(state, snapshot) -> None:
         st.subheader("Concentration")
         cols = st.columns(len(conc))
         for col, (name, value) in zip(cols, sorted(conc.items()), strict=True):
-            col.metric(name.replace("_", " ").title(), pct(value))
+            col.metric(name.replace("_", " ").title(), _concentration(name, value))
+
+
+#: Concentration figures that are COUNTS, not fractions. Everything else in
+#: `concentration_summary` is a weight share.
+_COUNTS = {"effective_assets"}
+
+
+def _concentration(name: str, value: float | None) -> str:
+    """Format one concentration figure in its own units.
+
+    ``effective_assets`` is 1/HHI — "this book behaves like 5.3 equal
+    positions". Formatting it with ``pct()`` alongside the weight shares
+    rendered it as **529.3%**, which is not a quantity that exists. Every
+    other key in the summary really is a fraction.
+    """
+    if value is None:
+        return DASH
+    if name in _COUNTS:
+        return f"{value:.1f}"
+    return pct(value)

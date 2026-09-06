@@ -23,7 +23,7 @@ from .enums import (
     TriggerType,
 )
 from .portfolio import PortfolioState
-from .risk import RiskChange, RiskSnapshot
+from .risk import Breach, RiskChange, RiskSnapshot
 
 __all__ = [
     "DecisionEvent",
@@ -39,7 +39,7 @@ __all__ = [
 class Explanation:
     """Deterministic, structured account of one decision (FR-140).
 
-    All nine fields. A field that does not apply is ``None`` or an empty
+    All ten fields. A field that does not apply is ``None`` or an empty
     tuple — never an empty string.
     """
 
@@ -53,6 +53,14 @@ class Explanation:
     stress_summary: tuple[str, ...]
     action: str
     expected_improvement: str | None = None
+
+    #: Controls the candidate BREACHED. Distinct from ``main_contributors``,
+    #: which is movement over time. Conflating the two produced the sentence
+    #: "Asset risk contribution (GOLD) rose from 40.00% to 47.14%" — where
+    #: 40.00% is the RED LIMIT, not a value gold ever held. A risk tool that
+    #: invents a prior reading in its headline sentence is worse than one
+    #: that says nothing.
+    main_exceedances: tuple[Breach, ...] = ()
 
 
 @dataclass(frozen=True)

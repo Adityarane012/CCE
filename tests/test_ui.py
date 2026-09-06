@@ -215,3 +215,29 @@ def test_the_backtest_actually_runs_from_the_ui(app):
         "the honest-reading caption did not render; a backtest page that "
         "shows only the favourable numbers is the failure docs/09 forbids"
     )
+
+
+def test_effective_assets_is_not_rendered_as_a_percentage(app):
+    """`effective_assets` is 1/HHI — a COUNT of equivalent equal positions.
+
+    It sits in the same dict as four weight shares, and formatting the whole
+    dict with pct() rendered a 5.3-position book as "529.3%". That is not a
+    quantity that exists, and it appeared on screen in the deployed app.
+    """
+    app.sidebar.radio[0].set_value("Portfolio & Exposure").run()
+    assert not app.exception, f"portfolio page raised: {app.exception}"
+
+    values = [str(getattr(m, "value", "")) for m in app.metric]
+    labels = [str(getattr(m, "label", "")) for m in app.metric]
+    pairs = dict(zip(labels, values, strict=False))
+
+    effective = pairs.get("Effective Assets")
+    assert effective is not None, f"metric not found; labels: {labels}"
+    assert not effective.endswith("%"), (
+        f"Effective Assets rendered as {effective!r} — it is a count of "
+        f"equivalent positions, not a share"
+    )
+    assert 1.0 <= float(effective) <= 20.0, (
+        f"Effective Assets {effective!r} outside a sane range for a "
+        f"9-asset universe"
+    )

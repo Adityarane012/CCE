@@ -37,6 +37,7 @@ from cce.audit import (
 )
 from cce.clock import utc_now
 from cce.contracts import (
+    Breach,
     Candidate,
     CandidateRole,
     Constraints,
@@ -45,7 +46,6 @@ from cce.contracts import (
     NarratedExplanation,
     OptimizationResult,
     PortfolioState,
-    RiskChange,
     SolverStatus,
     Strategy,
     TriggerType,
@@ -557,21 +557,21 @@ class OptimizationService:
         # 0.0% to 100.0%" — true, meaningless, and the first line a reader
         # sees. Their failures still appear in `reasons`, which is where a
         # model problem belongs.
-        contributors: list[RiskChange] = []
+        # These are BREACHES, not movements. They were previously packed into
+        # RiskChange(from_value=threshold, to_value=observed), which the
+        # narrator faithfully rendered as "Asset risk contribution (GOLD) rose
+        # from 40.00% to 47.14%" — a sentence stating that gold's risk
+        # contribution used to be 40%. It never was; 40% is the RED limit.
+        # The explanation now carries them as what they are.
+        exceedances: list[Breach] = []
         if safe.control is not None:
             movable = [
                 b for b in safe.control.findings
                 if not b.control_code.startswith(("MODEL_", "DATA_"))
             ]
-            for breach in sorted(
+            exceedances = sorted(
                 movable, key=lambda b: b.observed - b.threshold, reverse=True
-            )[:3]:
-                contributors.append(RiskChange(
-                    metric=breach.control_label,
-                    from_value=breach.threshold,
-                    to_value=breach.observed,
-                    scope=breach.scope,
-                ))
+            )[:3]
 
         if safe.eligible_for_approval:
             action = (
@@ -608,7 +608,8 @@ class OptimizationService:
         expl = build_explanation(
             trigger=trigger_detail or "Decision cycle requested",
             risk_change=None,
-            main_contributors=tuple(contributors),
+            main_contributors=(),   # movement over time; none is measured here
+            main_exceedances=tuple(exceedances),
             optimizer=strategy,
             candidate_summary=dict(safe.optimization.weights or {}),
             control_status=(

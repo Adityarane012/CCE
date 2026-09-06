@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from cce.contracts import ControlStatus, Explanation, RiskChange, Strategy
+from cce.contracts import (
+    Breach,
+    ControlStatus,
+    Explanation,
+    RiskChange,
+    Strategy,
+)
 
 __all__ = ["build_explanation"]
 
@@ -41,6 +47,7 @@ def build_explanation(
     stress_summary: Iterable[str],
     action: str,
     expected_improvement: str | None = None,
+    main_exceedances: Iterable[Breach] = (),
 ) -> Explanation:
     """Assemble the structured Explanation. Deterministic.
 
@@ -48,7 +55,11 @@ def build_explanation(
         trigger: What started this decision cycle. Required, non-empty.
         risk_change: The headline metric movement, or ``None`` if this cycle
             was not triggered by one.
-        main_contributors: Per-scope movements behind ``risk_change``.
+        main_contributors: Per-scope MOVEMENTS behind ``risk_change``.
+            Never breaches — a threshold is not a previous value.
+        main_exceedances: The controls the candidate breached, worst
+            first. Carries observed AND threshold so prose can state
+            both without implying the metric moved.
         optimizer: The strategy that produced the proposal, or ``None`` if the
             optimizer did not run.
         candidate_summary: ``{asset_id: weight}`` for the proposed allocation.
@@ -74,6 +85,7 @@ def build_explanation(
         trigger=trigger_text,
         risk_change=risk_change,
         main_contributors=tuple(main_contributors),
+        main_exceedances=tuple(main_exceedances),
         optimizer=optimizer,
         candidate_summary=dict(candidate_summary),
         control_result=control_status.value,
