@@ -66,6 +66,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# scripts/build_deck.py writes SLIDE COPY. En dashes, minus signs and "≠" are
+# the correct characters to put in front of a judge, and RUF001 exists to catch
+# them being smuggled into identifiers — not into presentation prose.
+"scripts/build_deck.py" = ["RUF001", "RUF002", "RUF003"]
+
 # Tests construct contract objects with deliberately redundant keyword dicts
 # and assert on values a linter reads as unused.
 "tests/*" = ["ARG001", "ARG002"]

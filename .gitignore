@@ -121,3 +121,11 @@ graphify-out/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── Submission deck ──────────────────────────────────────────
+# The template and the generated deck are binaries that change on every
+# rebuild. scripts/build_deck.py regenerates the deck from the template plus
+# the current screenshots, so the SCRIPT is the artefact worth versioning.
+INIT'26 PPT FORMAT.pptx
+CCE — INIT26 Submission.pptx
+build/
