@@ -127,6 +127,11 @@ python -m venv .venv
 .venv/Scripts/streamlit.exe run app.py           # dashboard on :8501
 ```
 
+**Deploying it?** See [`DEPLOYMENT.md`](DEPLOYMENT.md). Short version: the
+dashboard goes to Streamlit Community Cloud (Vercel cannot host a Streamlit
+app — no long-lived WebSockets on serverless), and the static pitch page in
+`web/` goes to Vercel.
+
 **It runs with no network and no API key.** A market-data snapshot is committed to `data/cache/`, which is what makes the demo reproducible and offline-capable.
 
 ### Verify it before you trust it
@@ -239,7 +244,7 @@ Expected returns are labelled **"Model Estimate"** everywhere they appear. They 
 
 ## Documentation
 
-CCE is specified by an 18-document set. Publishing all of it would make this repo harder to read, not easier, so the five that carry the argument are here and the rest stay local:
+CCE is specified by an 18-document set, and **all of it is here**. Start with [`docs/README.md`](docs/README.md) for the reading order. The ones that carry the argument:
 
 | Document | What it answers |
 |---|---|
@@ -250,7 +255,14 @@ CCE is specified by an 18-document set. Publishing all of it would make this rep
 | [`10-RULES.md`](docs/10-RULES.md) | The twelve safety invariants, each with an ID and a test |
 | [`CLAUDE.md`](docs/CLAUDE.md) | The project constitution — the constraints this codebase operates under |
 
-Kept local: the TRD (113 numbered requirements), workflow, data contracts, backend schema, UI spec, testing strategy, security, edge cases, demo script, glossary and the phase-by-phase implementation plan.
+Also published: the [TRD](docs/03-TRD.md) (113 numbered requirements), the
+[runtime workflow](docs/04-WORKFLOW.md), [backend schema](docs/05-BACKEND-SCHEMA.md),
+[data contracts](docs/06-DATA-CONTRACTS.md), [UI spec](docs/09-UI-SPEC.md),
+[testing strategy](docs/11-TESTING-STRATEGY.md), [security](docs/12-SECURITY.md),
+[edge cases](docs/13-EDGE-CASES.md), [demo script](docs/14-DEMO-SCRIPT.md),
+[glossary](docs/15-GLOSSARY.md) and the
+[implementation plan](docs/IMPLEMENTATION-PLAN.md) — whose §1b records what
+actually went wrong during the build, not just what was intended.
 
 **Start with [`10-RULES.md`](docs/10-RULES.md) §2** if you only read one thing — the twelve invariants are the product's actual claims, and each one has a test.
 

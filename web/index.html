@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCE — Capital Control Engine</title>
+<meta name="description" content="An institutional capital-allocation prototype. The optimizer proposes; an independent control engine disposes.">
+<style>
+  /* Light palette on bare :root so nothing depends on a media query. */
+  :root{
+    --bg:#ffffff; --panel:#f7f8fa; --line:#e5e7eb;
+    --ink:#1a202c; --muted:#5a6675; --faint:#8a94a3;
+    --accent:#2b6cb0; --green:#1b873f; --amber:#b7791f; --red:#c53030;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root:not([data-theme="light"]) { }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12151a; --panel:#1a1f27; --line:#2a313c;
+      --ink:#e8ecf1; --muted:#9aa5b4; --faint:#6b7684;
+      --accent:#63a4e8; --green:#4ade80; --amber:#fbbf24; --red:#f87171;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12151a; --panel:#1a1f27; --line:#2a313c;
+    --ink:#e8ecf1; --muted:#9aa5b4; --faint:#6b7684;
+    --accent:#63a4e8; --green:#4ade80; --amber:#fbbf24; --red:#f87171;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent)}
+
+  /* ---- hero ---- */
+  header{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--faint); margin:0 0 18px;
+  }
+  h1{font-size:clamp(30px,5.2vw,46px); line-height:1.15; margin:0 0 8px; letter-spacing:-.02em}
+  .sub{font-size:clamp(17px,2.4vw,20px); color:var(--muted); margin:0 0 28px; max-width:56ch}
+  .principle{
+    font-size:clamp(19px,3vw,24px); font-weight:600; margin:0 0 28px;
+    padding-left:16px; border-left:3px solid var(--accent);
+  }
+  .cta{display:flex; gap:12px; flex-wrap:wrap; margin-top:30px}
+  .btn{
+    display:inline-block; padding:11px 20px; border-radius:7px;
+    text-decoration:none; font-weight:600; font-size:15px;
+    border:1px solid var(--line); color:var(--ink); background:var(--panel);
+  }
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn:hover{opacity:.88}
+
+  /* ---- sections ---- */
+  section{padding:52px 0; border-bottom:1px solid var(--line)}
+  h2{font-size:13px; font-family:var(--mono); letter-spacing:.12em;
+     text-transform:uppercase; color:var(--faint); margin:0 0 22px; font-weight:600}
+  h3{font-size:19px; margin:0 0 8px}
+  p{margin:0 0 16px; color:var(--muted); max-width:70ch}
+  p strong, li strong{color:var(--ink)}
+
+  .loop{
+    font-family:var(--mono); font-size:13px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:16px; overflow-x:auto; white-space:pre; margin:0 0 20px;
+  }
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:18px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:20px}
+  .card p{font-size:14.5px; margin:0}
+
+  /* ---- table ---- */
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:520px}
+  th,td{padding:11px 12px; text-align:right; border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  th{font-weight:600; color:var(--faint); font-size:12px;
+     text-transform:uppercase; letter-spacing:.06em}
+  tr.ours td{font-weight:600}
+  tr.ours{background:var(--panel)}
+  .good{color:var(--green)} .bad{color:var(--red)}
+  .note{font-size:13.5px; color:var(--faint); margin-top:14px; max-width:70ch}
+
+  ol.inv{columns:2; column-gap:36px; padding-left:20px; margin:0}
+  ol.inv li{margin-bottom:9px; font-size:14.5px; color:var(--muted);
+            break-inside:avoid; padding-left:4px}
+  @media (max-width:640px){ ol.inv{columns:1} }
+
+  footer{padding:40px 0 64px; color:var(--faint); font-size:14px}
+  .disclaim{
+    background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--amber);
+    border-radius:8px; padding:16px 18px; margin:26px 0 0; font-size:14px;
+  }
+  .disclaim p{color:var(--muted); margin:0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">INIT'26 FinTech Hackathon · Asset &amp; Capital Management</p>
+    <h1>Capital Control Engine</h1>
+    <p class="principle">Optimal&nbsp;≠&nbsp;Safe.</p>
+    <p class="sub">
+      The highest-return mathematical allocation is not automatically the
+      allocation an institution should accept. CCE separates the two — and
+      shows both.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://cce-init26.streamlit.app" id="app">Open the live dashboard</a>
+      <a class="btn" href="https://github.com/Adityarane012/CCE">Source on GitHub</a>
+      <a class="btn" href="https://github.com/Adityarane012/CCE/blob/main/docs/10-RULES.md">The 12 invariants</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>The loop</h2>
+    <div class="loop">Market data → Portfolio state → Risk engine → Detect → Optimize
+   → Validate → Stress test → Explain → Human approval
+   → Simulated rebalance → Audit → (repeat)</div>
+    <p>
+      The optimizer is deliberately <strong>not</strong> the final authority. It
+      generates candidate allocations; a separate control layer independently
+      re-derives every metric and decides whether the candidate is acceptable.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What makes it different</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Structural independence</h3>
+        <p>
+          <strong>The control engine cannot import the optimizer.</strong> That
+          is enforced by a test that parses imports across the tree, not by
+          convention. The validator recomputes every metric from raw returns
+          rather than trusting the optimizer's own numbers — so a solver bug
+          becomes a <strong>rejection</strong>, not an approval.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Risk contribution, not just weight</h3>
+        <p>
+          Allocation answers <em>how much capital is here</em>. Risk
+          contribution answers <em>how much of our risk is caused by this</em>.
+          Asked for the unconstrained optimum on real NSE data, the optimizer
+          proposes gold at <strong>31% of capital and 62% of portfolio
+          risk</strong>. A weight-only framework waves that through.
+        </p>
+      </div>
+      <div class="card">
+        <h3>On failure, do less</h3>
+        <p>
+          Any failure — optimizer, data, stress, database — preserves the
+          <strong>Last Approved Safe Allocation</strong>. The system never
+          invents one, and never relaxes a constraint to produce an answer.
+        </p>
+      </div>
+      <div class="card">
+        <h3>The LLM writes prose, never decisions</h3>
+        <p>
+          Explanation only. It cannot touch a weight, a threshold, a risk score
+          or an approval, and there is no path from its output back into
+          decision state. The system runs fully with <strong>no API
+          key</strong>.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Does the control layer actually help?</h2>
+    <p>
+      Walk-forward backtest, Sep 2024 – Aug 2026, monthly rebalance, identical
+      data down both arms.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy</th><th>Return</th><th>Volatility</th>
+            <th>Max drawdown</th><th>Policy breaches</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Buy and hold</td><td>12.8%</td><td>8.7%</td><td>8.8%</td><td>0</td></tr>
+          <tr>
+            <td>Uncontrolled optimizer</td>
+            <td>33.5%</td><td>11.3%</td><td>6.5%</td>
+            <td class="bad">37</td>
+          </tr>
+          <tr class="ours">
+            <td>CCE-controlled</td>
+            <td>23.5%</td>
+            <td class="good">7.3%</td>
+            <td class="good">4.8%</td>
+            <td class="good">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      The controlled strategy earned <strong>ten points less</strong>. We are not
+      going to dress that up. In exchange: a third less volatility, a shallower
+      drawdown, and zero policy breaches against thirty-seven. That is not
+      outperformance — it is a different mandate, and saying so plainly is more
+      credible than claiming otherwise on a single sample.
+    </p>
+    <p class="note">
+      Every rebalance uses only data strictly <em>before</em> that date. The
+      suite includes a test that injects a one-day look-ahead leak and fails if
+      it goes undetected.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Twelve safety invariants — each with a test</h2>
+    <ol class="inv">
+      <li>The LLM cannot modify financial decisions</li>
+      <li>An invalid optimizer output cannot become an approved allocation</li>
+      <li>A hard control failure cannot be silently ignored</li>
+      <li>If optimization fails, retain the last approved allocation</li>
+      <li>Missing critical market data is not zero risk</li>
+      <li>Every approval and rejection is auditable</li>
+      <li>Backtesting must not use future information</li>
+      <li>Threshold changes are versioned and audited</li>
+      <li>Current, optimal and safe allocations stay distinct</li>
+      <li>A stress-test failure stays visible even if normal metrics pass</li>
+      <li>Risk state is computed in exactly one place</li>
+      <li>The UI contains no financial logic</li>
+    </ol>
+    <p class="note">
+      571 tests pass, none skipped. Two invariants were deliberately left
+      <strong>failing</strong> until the components they guard existed — a green
+      tick against something never built is worse than a visible gap.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Built with</h2>
+    <p>
+      Python 3.11 · NumPy · pandas · SciPy · CVXPY · jugaad-data (NSE/RBI
+      market data) · SQLite · Streamlit + Plotly · pytest, ruff, mypy.
+    </p>
+    <p>
+      Mean-variance optimization, EWMA volatility, historical VaR and CVaR,
+      risk contribution, Rockafellar–Uryasev CVaR LP, Hierarchical Risk Parity,
+      Black-Litterman, walk-forward backtesting.
+    </p>
+    <div class="disclaim">
+      <p>
+        <strong>Decision-support prototype.</strong> Not connected to any
+        brokerage — approval triggers a <em>simulated</em> rebalance. Risk
+        thresholds are configurable demonstration values, not Basel, SEBI or RBI
+        limits. Expected returns are labelled “Model Estimate” everywhere they
+        appear. No guarantee of returns is made or implied.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/Adityarane012/CCE">GitHub</a> ·
+      <a href="https://github.com/Adityarane012/CCE/tree/main/docs">Full specification</a> ·
+      <a href="https://github.com/Adityarane012/CCE/blob/main/docs/08-FINANCIAL-METHODS.md">Financial methods</a>
+    </p>
+    <p>Hackathon prototype. Not licensed for production use or real capital allocation.</p>
+  </div>
+</footer>
+
+</body>
+</html>

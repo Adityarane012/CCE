@@ -1,0 +1,37 @@
+# Streamlit configuration — committed deliberately.
+#
+# Holds no secrets. `.streamlit/secrets.toml` is the file that must never be
+# committed, and .gitignore excludes it by name while allowing this one.
+
+[theme]
+# Deliberately sober. This is a risk-control tool for an institution, not a
+# consumer app — the only saturated colours in the product are the ones that
+# mean something: GREEN / AMBER / RED risk state.
+base = "light"
+primaryColor = "#2B6CB0"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F8FA"
+textColor = "#1A202C"
+
+[server]
+headless = true
+# Usage stats off: this is a risk tool, and a deployed instance should not
+# phone home about a demo portfolio's interactions.
+enableCORS = false
+enableXsrfProtection = true
+# The committed parquet cache is small, but a stress run posts a scenario
+# payload; the default 200 MB is far more than needed.
+maxUploadSize = 10
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# A rerun that fails should surface, not silently render a half page.
+fastReruns = true
+
+[client]
+# Show errors in the deployed app. A blank panel reads as a crash to a judge
+# and gives a presenter nothing to say; the real message is more useful and
+# this app never puts a secret in an exception (see docs/12-SECURITY.md).
+showErrorDetails = true

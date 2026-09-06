@@ -2,22 +2,20 @@
 # CCE — Capital Control Engine
 # ─────────────────────────────────────────────────────────────
 
-# Documentation
-# Most of the 18-document spec set stays local: publishing all of it makes
-# the repo harder to read, not easier. The five below carry the argument a
-# reviewer actually needs - what it is, how it is layered, what the controls
-# are, what the maths is, and what the safety invariants are.
+# ── Documentation ────────────────────────────────────────────
+# The full spec set is PUBLIC. It is the strongest part of the repository:
+# twelve numbered safety invariants, 113 numbered requirements, every
+# formula with its units and annualisation, and an implementation plan that
+# records what actually went wrong rather than only what was intended.
 #
-# NOTE: must be `docs/*` not `docs/` — git cannot re-include a file whose
-# parent DIRECTORY is excluded, so the negations below would be silently
-# ignored under a `docs/` rule.
-docs/*
-!docs/CLAUDE.md
-!docs/01-PRODUCT-SPECIFICATION.md
-!docs/02-ARCHITECTURE.md
-!docs/07-RISK-POLICY.md
-!docs/08-FINANCIAL-METHODS.md
-!docs/10-RULES.md
+# Two exceptions below — a scratch file and the private working notes.
+# Everything else ships.
+# (nothing excluded — readme_fintech.md is the hackathon brief and gives
+# a reader the problem CCE was built against, so it ships too.)
+
+# ── Deployment ───────────────────────────────────────────────
+.vercel/
+
 # ── Secrets ──────────────────────────────────────────────────
 .env
 .env.*
@@ -25,7 +23,10 @@ docs/*
 # record of which variables exist, and the constitution requires it.
 # It holds no secrets — only defaults and a commented-out placeholder.
 !.env.example
+# Streamlit: secrets stay out, config.toml ships — it carries the theme and
+# the server settings the deployed app needs, and holds nothing sensitive.
 .streamlit/secrets.toml
+!.streamlit/config.toml
 *.pem
 *.key
 
