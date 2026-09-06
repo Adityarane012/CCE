@@ -45,12 +45,20 @@ The validator recomputes every metric from raw returns rather than reading the o
 
 | Asset | Weight | Risk contribution |
 |---|---:|---:|
-| NIFTY50 | 26% | **35.2%** |
-| BANKNIFTY | 20% | 29.6% |
-| GSEC | 12% | **1.2%** |
+| NIFTY50 | 28% | **35.5%** |
+| BANKNIFTY | 24% | **33.6%** |
+| GOLD | 10% | 7.0% |
+| GSEC | 12% | **1.1%** |
 | CASH | 6% | 0.0% |
 
-A position can sit comfortably inside its 30% weight cap while causing 43% of portfolio risk. A weight-only control framework cannot see that.
+Government securities are 12% of the capital and 1.1% of the risk; gold is 10%
+and 7.0%. Both are doing what a diversifier should. Equity is not.
+
+The gap gets wider the moment an optimizer is involved. Asked for the best
+unconstrained risk-adjusted portfolio on this data, it proposes gold at **31% of
+capital — and 62% of portfolio risk**, against a 40% hard limit. It is refused.
+A weight-only control framework would have seen a 31% position and waved it
+through.
 
 **Safe vs Optimal, shown side by side.** The rejected optimal portfolio isn't hidden — it's the argument, displayed with the specific limits it broke (control, observed value, threshold), never a generic "constraints violated".
 
@@ -60,7 +68,8 @@ A position can sit comfortably inside its 30% weight cap while causing 43% of po
 
 ## Status
 
-**Phases 0–3 of 15 complete.** 232 tests passing.
+**All 15 phases complete.** 571 tests passing, none skipped. `ruff` and `mypy`
+clean across 93 files. Six failure drills pass.
 
 | Phase | Component | Status |
 |---|---|---|
@@ -68,13 +77,37 @@ A position can sit comfortably inside its 30% weight cap while causing 43% of po
 | 1 | Data layer, validation, committed cache | ✅ |
 | 2 | Portfolio state, turnover, transaction costs | ✅ |
 | 3 | Risk engine — volatility, EWMA, VaR, CVaR, drawdown, risk contribution | ✅ |
-| 4 | Optimizer (constrained max-Sharpe) | next |
-| 5–7 | Control engine, circuit breaker, stress testing | planned |
-| 8–9 | Audit store, services, approval workflow | planned |
-| 10 | Streamlit dashboard | planned |
-| 11–15 | Alternative optimizers, backtest, LLM narration, demo | planned |
+| 4 | Optimizer — constrained max-Sharpe, efficient frontier | ✅ |
+| 5–7 | Control engine, circuit breaker, stress testing | ✅ |
+| 8–9 | Audit store, services, approval workflow | ✅ |
+| 10 | Streamlit dashboard — 8 pages | ✅ |
+| 11 | Alternative optimizers — min-vol, target-return, CVaR LP, HRP, Black-Litterman | ✅ |
+| 12 | Walk-forward backtest with look-ahead prevention | ✅ |
+| 13–15 | LLM narration, "What Changed?", demo drill | ✅ |
 
-This is an honest status, not a roadmap aspiration. The dashboard does not exist yet.
+All twelve safety invariants have a real test. None is skipped, and none passes
+vacuously — the two that once did (INV-7 needed the backtest module, INV-12
+needed the UI) were left **failing on purpose** until the component existed,
+because a green tick against something that was never built is worse than a
+visible gap.
+
+### Does the control layer actually help?
+
+Walk-forward, Sep 2024 – Aug 2026, monthly rebalance, identical data:
+
+| Strategy | Return | Volatility | Max drawdown | Policy breaches |
+|---|---:|---:|---:|---:|
+| Buy and hold | 12.8% | 8.7% | 8.8% | 0 |
+| Uncontrolled optimizer | **33.5%** | 11.3% | 6.5% | **37** |
+| CCE-controlled | 23.5% | **7.3%** | **4.8%** | **0** |
+
+The controlled strategy earned **ten points less**. In exchange: a third less
+volatility, a shallower drawdown, and zero policy breaches against thirty-seven.
+That is not outperformance — it is a different mandate, and stating it plainly
+is more credible than claiming otherwise on a single three-year sample.
+
+Every rebalance uses only data strictly *before* that date. The suite includes a
+test that injects a one-day leak and fails if it goes undetected.
 
 ---
 
@@ -90,10 +123,26 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
 .venv/bin/python -m pip install -r requirements.txt           # Unix
 
-.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m pytest -q            # 571 passed
+.venv/Scripts/streamlit.exe run app.py           # dashboard on :8501
 ```
 
 **It runs with no network and no API key.** A market-data snapshot is committed to `data/cache/`, which is what makes the demo reproducible and offline-capable.
+
+### Verify it before you trust it
+
+```bash
+.venv/Scripts/python.exe scripts/demo_drill.py     # 6 failure drills
+.venv/Scripts/python.exe scripts/demo_figures.py   # regenerate every quoted figure
+```
+
+`demo_drill.py` deliberately breaks the system six ways — no network, no API
+key, deleted database, a −40% shock, an attempt to approve a rejected
+allocation, and an attempt to weaken a threshold without a reason — and
+asserts it degrades correctly each time rather than pretending to be healthy.
+
+`demo_figures.py` re-derives every number quoted in the demo script from the
+committed data. No figure is spoken aloud until that command has produced it.
 
 ### Try the risk engine
 
@@ -105,9 +154,9 @@ from cce.risk import RiskInputs, compute_risk_snapshot
 universe, policy = load_universe(), load_policy()
 market, _ = load_market_data(universe)
 
-weights = {"NIFTY50": 0.26, "BANKNIFTY": 0.20, "IT": 0.10, "PHARMA": 0.08,
-           "FMCG": 0.06, "GOLD": 0.10, "GSEC": 0.12, "CORPBOND": 0.02,
-           "CASH": 0.06}
+# the committed demo book — ₹100 Cr
+weights = {"NIFTY50": 0.28, "BANKNIFTY": 0.24, "IT": 0.12, "GSEC": 0.12,
+           "GOLD": 0.10, "PHARMA": 0.08, "CASH": 0.06}
 
 snapshot, cov = compute_risk_snapshot(RiskInputs(
     weights=weights, universe=universe, market_data=market,
@@ -146,15 +195,15 @@ cce/audit/     → append-only SQLite
 
 Layer rules are enforced by `tests/test_architecture.py`, which parses imports across the tree. A violation fails the build rather than being caught in review.
 
-**The Streamlit UI will contain no financial logic.** It calls a service layer; the service layer calls the engines.
+**The Streamlit UI contains no financial logic.** It calls a service layer; the service layer calls the engines. `tests/test_invariants.py` asserts that `ui/` imports nothing but `cce.services` and `cce.contracts` (INV-12) — that guard caught a real violation the first time the backtest page was written.
 
 ---
 
 ## Tech stack
 
-Python 3.11 · NumPy · pandas · SciPy · CVXPY · [jugaad-data](https://github.com/jugaad-py/jugaad-data) (NSE/RBI market data) · SQLite · pytest · Streamlit + Plotly (planned)
+Python 3.11 · NumPy · pandas · SciPy · CVXPY · [jugaad-data](https://github.com/jugaad-py/jugaad-data) (NSE/RBI market data) · SQLite · pytest · Streamlit + Plotly
 
-Dependencies are installed per build phase rather than all at once, so a failed install never blocks an earlier phase. See `requirements.txt`.
+Dependencies were installed per build phase rather than all at once, so a failed install never blocked an earlier phase. All are now pinned in `requirements.txt`; `anthropic` is optional and the system runs fully without an API key.
 
 ---
 
@@ -171,7 +220,7 @@ Every financial function has a test with a **hand-computed** expected value — 
 - `CVaR ≥ VaR` across 20 seeds
 - annualisation applied exactly once (a `√252` applied twice is a 15.9× error that still looks like a number)
 
-A cross-check worth noting: `√(w'Σw)` from the covariance matrix and the standard deviation of the portfolio return series both give **9.71%** on the committed data — two entirely independent computational paths agreeing.
+A cross-check worth noting: `√(w'Σw)` from the covariance matrix and the standard deviation of the portfolio return series both give **10.35%** on the committed data — two entirely independent computational paths agreeing.
 
 ---
 
