@@ -33,7 +33,13 @@ def _layout(fig: go.Figure, height: int, title: str = "") -> go.Figure:
         margin={"l": 10, "r": 10, "t": 40 if title else 10, "b": 10},
         plot_bgcolor="white",
         paper_bgcolor="white",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+        legend={
+            "orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0,
+            # Explicitly blank. Left unset, Plotly 7 renders the legend
+            # title as the literal string "undefined" above every chart —
+            # visible on all three figures in the deployed app.
+            "title": {"text": ""},
+        },
         font={"size": 13},
     )
     fig.update_xaxes(gridcolor=_GRID, zerolinecolor=_GRID)

@@ -241,3 +241,31 @@ def test_effective_assets_is_not_rendered_as_a_percentage(app):
         f"Effective Assets {effective!r} outside a sane range for a "
         f"9-asset universe"
     )
+
+
+def test_no_chart_renders_an_undefined_legend_title():
+    """Plotly 7 renders an UNSET legend title as the literal "undefined".
+
+    It appeared above every figure in the deployed app, including the
+    weight-vs-risk-contribution chart that carries the product's central
+    point. Asserted on the figures themselves — AppTest reports
+    `plotly_chart.value` as None, so it cannot see this.
+    """
+    import pandas as pd
+
+    from ui.components import charts
+
+    weights = {"GOLD": 0.25, "NIFTY50": 0.20, "CASH": 0.55}
+    rc = {"GOLD": 0.37, "NIFTY50": 0.22, "CASH": 0.0}
+    curve = pd.Series([1.0, 1.1, 1.05], index=pd.date_range("2025-01-01", periods=3))
+
+    figures = {
+        "weight_vs_risk_contribution": charts.weight_vs_risk_contribution(weights, rc),
+        "allocation_donut": charts.allocation_donut(weights),
+        "sector_vs_cap": charts.sector_vs_cap(weights, {"GOLD": 0.35}),
+        "equity_curves": charts.equity_curves({"CCE_CONTROLLED": curve}),
+        "drawdown_curves": charts.drawdown_curves({"CCE_CONTROLLED": curve - 1.0}),
+    }
+    for name, fig in figures.items():
+        title = getattr(getattr(fig.layout.legend, "title", None), "text", None)
+        assert title in ("", None), f"{name}: legend title is {title!r}"
