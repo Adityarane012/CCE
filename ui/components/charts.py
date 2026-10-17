@@ -28,7 +28,11 @@ _GRID = "#E5E7EB"
 
 def _layout(fig: go.Figure, height: int, title: str = "") -> go.Figure:
     fig.update_layout(
-        title=title or None,
+        # Explicitly blank, never None. `title or None` left the title
+        # UNSET, and Plotly 7 draws an unset title as the literal string
+        # "undefined" in the <g class="gtitle"> element — the same defect
+        # already fixed for the legend title below, on a second property.
+        title={"text": title},
         height=height,
         margin={"l": 10, "r": 10, "t": 40 if title else 10, "b": 10},
         plot_bgcolor="white",
