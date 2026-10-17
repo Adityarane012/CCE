@@ -42,8 +42,8 @@ The two moments, both measured:
 
 | | Optimizer proposes | Control engine says |
 |---|---|---|
-| **No view** | PHARMA 32% · GOLD 31% · CORPBOND 26% | **RED** — gold risk contribution **62.1%** vs a 40% hard limit; turnover 70.7% vs 25%; cash 0.9% vs a 3% floor |
-| **"Banking will outperform by 4%"** | BANKING 30% · BROAD_EQUITY 30% · GOLD 20% | **RED** — worst stress loss **18.87%** vs the 18% limit; banking risk contribution **34.7%** vs 30% |
+| **No view** | PHARMA 30% · CORPBOND 28% · GOLD 28% | **RED** — gold risk contribution **60.65%** vs a 40% hard limit; turnover 68.14% vs 25%; cash 1.86% vs a 3% floor |
+| **"Banking will outperform by 4%"** | BANKING 30% · BROAD_EQUITY 29% · GOLD 22% | **RED** — worst stress loss **18.70%** vs the 18% limit; banking risk contribution **33.78%** vs 30% |
 
 Both are rejected. Neither rejection was arranged.
 
@@ -64,7 +64,7 @@ gets shown.
 **Say:**
 > "This is CCE — Capital Control Engine. A ₹100 crore institutional portfolio across Indian equity, banking, IT, pharma, gold and government securities.
 >
-> Right now every risk control is GREEN. Annualised volatility 10.4%, VaR 0.9%, CVaR 1.5%. Nothing is breaching."
+> Right now every risk control is GREEN. Annualised volatility 10.4%, VaR 1.0%, CVaR 1.5%. Nothing is breaching."
 
 *Measured. Allocation: broad equity 28% · banking 24% · IT 12% · G-sec 12% · gold 10% · pharma 8% · cash 6%.*
 
@@ -148,7 +148,7 @@ Gold:           +5%
 **Say:**
 > "Now the interesting part. I asked the optimizer for the best risk-adjusted portfolio it can find, with no constraints at all.
 >
-> Here it is: pharma 32%, gold 31%, corporate debt 26%. On any standard optimizer, this is the answer you'd get.
+> Here it is: pharma 30%, corporate debt 28%, gold 28%. On any standard optimizer, this is the answer you'd get.
 >
 > Our control engine rejected it. RED."
 
@@ -156,7 +156,7 @@ Gold:           +5%
 
 > "And look at *why*, because the reasons are specific numbers, not 'constraints violated':
 >
-> Gold is 31% of the money but **62% of the portfolio risk** — against a 40% hard limit. Turnover to get there is **71%**, against 25%. Cash would fall to **0.9%**, under a 3% floor. And commodity exposure hits 30.5% against a 25% cap.
+> Gold is 28% of the money but **61% of the portfolio risk** — against a 40% hard limit. Turnover to get there is **68%**, against 25%. Cash would fall to **1.9%**, under a 3% floor. And commodity exposure hits 27.8% against a 25% cap.
 >
 > Critically: the module that rejected it is not the module that produced it. The control engine doesn't import the optimizer, and doesn't trust a single number the optimizer reported about its own output. It recalculates everything from raw returns.
 >
@@ -179,9 +179,9 @@ Gold:           +5%
 **Say:**
 > "Here's the case I actually want to show you. A portfolio manager has a view: banking will outperform by 4%. That's an ordinary, defensible opinion, and the system lets them state it — Black-Litterman blends it with the market-implied equilibrium.
 >
-> The optimizer takes the view seriously. Banking goes to 30%, broad equity to 30%.
+> The optimizer takes the view seriously. Banking goes to 30%, broad equity to 29%.
 >
-> And the control engine refuses it. RED. Worst stress-scenario loss **18.87%** against an 18% limit, and banking risk contribution **34.7%** against 30%.
+> And the control engine refuses it. RED. Worst stress-scenario loss **18.70%** against an 18% limit, and banking risk contribution **33.78%** against 30%.
 >
 > The view changed what the optimizer *proposed*. It did not change what the controls *allow*. A user who believes banking will outperform can move the proposal — they cannot move the sector cap. That separation is the entire architecture in one interaction."
 

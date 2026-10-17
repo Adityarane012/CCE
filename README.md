@@ -55,9 +55,9 @@ Government securities are 12% of the capital and 1.1% of the risk; gold is 10%
 and 7.0%. Both are doing what a diversifier should. Equity is not.
 
 The gap gets wider the moment an optimizer is involved. Asked for the best
-unconstrained risk-adjusted portfolio on this data, it proposes gold at **31% of
-capital — and 62% of portfolio risk**, against a 40% hard limit. It is refused.
-A weight-only control framework would have seen a 31% position and waved it
+unconstrained risk-adjusted portfolio on this data, it proposes gold at **28% of
+capital — and 61% of portfolio risk**, against a 40% hard limit. It is refused.
+A weight-only control framework would have seen a 28% position and waved it
 through.
 
 **Safe vs Optimal, shown side by side.** The rejected optimal portfolio isn't hidden — it's the argument, displayed with the specific limits it broke (control, observed value, threshold), never a generic "constraints violated".
