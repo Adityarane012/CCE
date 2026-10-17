@@ -142,11 +142,36 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
 .venv/bin/python -m pip install -r requirements.txt           # Unix
 
-.venv/Scripts/python.exe -m pytest -q          # 571 passed, 0 skipped
+.venv/Scripts/python.exe -m pytest -q          # 577 passed, 0 skipped
 .venv/Scripts/streamlit.exe run app.py         # http://localhost:8501
 ```
 
 Python 3.11+. No network and no API key required.
+
+### Close your other apps first
+
+Under about 2 GB of free RAM, OpenBLAS cannot allocate its per-thread
+workspace and NumPy aborts the process with:
+
+```
+OpenBLAS error: Memory allocation still failed after 10 retries, giving up.
+```
+
+This is the machine, not the build — the same command succeeds on the same
+checkout once memory frees up. It is worth knowing about because it kills the
+process outright rather than raising, so a run that hits it mid-demo just
+stops.
+
+If you cannot free the memory, cap the thread pool. Results are unaffected:
+`demo_figures.py` output is byte-identical either way.
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/Scripts/streamlit.exe run app.py
+```
+
+```powershell
+$env:OPENBLAS_NUM_THREADS=1; $env:OMP_NUM_THREADS=1   # PowerShell
+```
 
 ---
 

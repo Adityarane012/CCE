@@ -68,7 +68,7 @@ through.
 
 ## Status
 
-**All 15 phases complete.** 571 tests passing, none skipped. `ruff` and `mypy`
+**All 15 phases complete.** 577 tests passing, none skipped. `ruff` and `mypy`
 clean across 93 files. Six failure drills pass.
 
 | Phase | Component | Status |
@@ -123,7 +123,7 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
 .venv/bin/python -m pip install -r requirements.txt           # Unix
 
-.venv/Scripts/python.exe -m pytest -q            # 571 passed
+.venv/Scripts/python.exe -m pytest -q            # 577 passed
 .venv/Scripts/streamlit.exe run app.py           # dashboard on :8501
 ```
 

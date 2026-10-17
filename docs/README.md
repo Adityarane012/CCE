@@ -10,7 +10,7 @@
 
 ## Build status — as-built, not aspirational
 
-**All 15 phases are complete.** 571 tests pass, none skipped. `ruff` and `mypy`
+**All 15 phases are complete.** 577 tests pass, none skipped. `ruff` and `mypy`
 are clean across 93 files. Six failure drills pass.
 
 | Layer | Module | State |
@@ -36,7 +36,7 @@ something never built is worse than a visible gap.
 ### Verify any of this yourself
 
 ```bash
-.venv/Scripts/python.exe -m pytest                 # 571 passed, 0 skipped
+.venv/Scripts/python.exe -m pytest                 # 577 passed, 0 skipped
 .venv/Scripts/python.exe scripts/demo_drill.py     # 6 failure drills
 .venv/Scripts/python.exe scripts/demo_figures.py   # every demo figure, re-derived
 ```
