@@ -42,6 +42,11 @@ website images/
 *.sqlite
 *.sqlite3
 data/cce.db
+# SQLite's write-ahead log and shared-memory sidecars. `*.db` does not
+# match them, so without these they show up as untracked files the moment
+# the app is opened.
+*.db-wal
+*.db-shm
 
 # ── Market data ──────────────────────────────────────────────
 # raw/ and processed/ are regenerable; cache/ is COMMITTED so the
