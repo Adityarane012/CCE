@@ -301,3 +301,33 @@ def test_no_chart_renders_an_undefined_plot_title():
             f"{name}: plot title text is None, which Plotly 7 draws as "
             f'the literal string "undefined"'
         )
+
+
+def test_the_custom_scenario_shocks_several_sectors_at_once():
+    """Stage 2 of the demo is a FOUR-sector shock, entered by hand.
+
+    docs/14-DEMO-SCRIPT.md stage 2 and config/scenarios.yaml lines 105-107
+    both describe the demo scenario as BANKING -18%, BROAD_EQUITY -12%,
+    IT -8%, GOLD +5% entered as a custom shock. The widget was a single
+    `selectbox` plus one slider, so that scenario could not be produced
+    from the UI at all and the presenter would have found it missing on
+    stage. It is pre-filled now, so stage 2 is one click.
+
+    A one-sector shock is also the wrong measurement: sectors fall
+    together, and shocking only banking understates the loss.
+    """
+    from ui.pages.stress import _DEMO_SHOCK
+
+    assert _DEMO_SHOCK == {
+        "BANKING": -18, "BROAD_EQUITY": -12, "IT": -8, "GOLD": 5
+    }, "the demo-shock preset drifted from the documented scenario"
+
+    source = (
+        Path(__file__).resolve().parent.parent / "ui" / "pages" / "stress.py"
+    ).read_text(encoding="utf-8")
+    assert "multiselect" in source, (
+        "the custom scenario must accept more than one sector"
+    )
+    assert "st.selectbox(" not in source, (
+        "a single-sector selectbox cannot express the demo scenario"
+    )

@@ -18,6 +18,13 @@ from ui.components.format import DASH, crore, pct
 from ui.components.indicators import stress_label
 from ui.state import Services
 
+# The scenario docs/14-DEMO-SCRIPT.md stage 2 asks the presenter to apply,
+# and the one config/scenarios.yaml lines 105-107 describe as entered by
+# hand rather than configured. Only the widget's starting values live here:
+# the shock actually applied is whatever is on screen when the button is
+# pressed, and the arithmetic stays in cce/stress (INV-12).
+_DEMO_SHOCK = {"BANKING": -18, "BROAD_EQUITY": -12, "IT": -8, "GOLD": 5}
+
 
 def render(svc: Services) -> None:
     st.header("Stress Lab")
@@ -104,21 +111,41 @@ def _run(svc, state, codes) -> None:
 def _custom(svc, state) -> None:
     with st.expander("Custom scenario"):
         st.caption(
-            "Shock a sector or an asset. A key matching neither is reported "
-            "as an error — a scenario that shocks nothing tests nothing."
+            "Shock one or more sectors at once. A real sell-off does not "
+            "move a single sector in isolation, and a one-sector shock "
+            "understates what a correlated move does to the book. A key "
+            "matching no sector is reported as an error — a scenario that "
+            "shocks nothing tests nothing."
         )
         sectors = sorted({a.sector for a in svc.ctx.universe.assets})
-        target = st.selectbox("Sector", sectors)
-        shock = st.slider(
-            "Shock (%)", min_value=-60, max_value=20, value=-30, step=5
+        preset = [s for s in _DEMO_SHOCK if s in sectors]
+        targets = st.multiselect(
+            "Sectors to shock", sectors, default=preset or sectors[:1]
         )
+        if not targets:
+            st.info("Select at least one sector to shock.", icon="ℹ")
+            return
+
+        shocks_pct: dict[str, int] = {}
+        for row_start in range(0, len(targets), 4):
+            row = targets[row_start:row_start + 4]
+            for col, sector in zip(st.columns(len(row)), row, strict=True):
+                shocks_pct[sector] = col.number_input(
+                    f"{sector} (%)",
+                    min_value=-60, max_value=20,
+                    value=_DEMO_SHOCK.get(sector, -30), step=1,
+                    key=f"custom_shock_{sector}",
+                )
+
         if st.button("Run custom scenario"):
+            label = " · ".join(f"{s} {p:+d}%" for s, p in shocks_pct.items())
             result = svc.stress.run_custom(
-                state.weights, {target: shock / 100.0},
-                label=f"{target} {shock}%",
+                state.weights,
+                {s: p / 100.0 for s, p in shocks_pct.items()},
+                label=label,
                 total_value_paise=state.total_value_paise,
             )
-            st.markdown(f"**{stress_label(result.status)}**")
+            st.markdown(f"**{label}** — {stress_label(result.status)}")
             if result.loss_is_measured:
                 st.metric("Portfolio loss", pct(result.portfolio_loss))
                 st.metric("Loss in rupees", crore(result.loss_paise))
